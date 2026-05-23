@@ -352,10 +352,18 @@ def main() -> int:
             elif action == "graveyard":
                 graveyard_panel.toggle()
             elif action == "tray":
-                hidden = True
-                if sdl_win is not None:
+                if tray.started and sdl_win is not None:
+                    hidden = True
                     try:
                         sdl_win.hide()
+                    except Exception:   # noqa: BLE001
+                        pass
+                elif sdl_win is not None:
+                    # Fallback for platforms/backends without a working tray.
+                    # Keep the app discoverable via taskbar/dock.
+                    hidden = False
+                    try:
+                        sdl_win.minimize()
                     except Exception:   # noqa: BLE001
                         pass
             elif action == "show":
@@ -366,10 +374,16 @@ def main() -> int:
                     except Exception:   # noqa: BLE001
                         pass
             elif action == "hide":
-                hidden = True
-                if sdl_win is not None:
+                if tray.started and sdl_win is not None:
+                    hidden = True
                     try:
                         sdl_win.hide()
+                    except Exception:   # noqa: BLE001
+                        pass
+                elif sdl_win is not None:
+                    hidden = False
+                    try:
+                        sdl_win.minimize()
                     except Exception:   # noqa: BLE001
                         pass
 

@@ -32,12 +32,19 @@ class Tray:
         self._icon = None
         self._thread: threading.Thread | None = None
         self._icon_path = icon_path
+        self._started = False
 
     @property
     def available(self) -> bool:
         return _AVAILABLE
 
+    @property
+    def started(self) -> bool:
+        """True once the tray backend has been started for this process."""
+        return self._started
+
     def start(self) -> None:
+        self._started = False
         if not _AVAILABLE:
             return
         try:
@@ -67,14 +74,19 @@ class Tray:
             log.warning("Tray icon init failed: %s", e)
             return
 
+        ready = threading.Event()
+
         def _run():
             try:
-                self._icon.run()    # type: ignore[union-attr]
+                self._icon.run(setup=lambda _icon: ready.set())    # type: ignore[union-attr]
             except Exception as e:   # noqa: BLE001
                 log.warning("Tray thread exited: %s", e)
 
         self._thread = threading.Thread(target=_run, daemon=True, name="tray")
         self._thread.start()
+        self._started = ready.wait(timeout=1.0)
+        if not self._started:
+            log.warning("Tray backend did not become ready; using minimize fallback")
 
     def stop(self) -> None:
         if self._icon is not None:
@@ -83,6 +95,7 @@ class Tray:
             except Exception:   # noqa: BLE001
                 pass
             self._icon = None
+        self._started = False
 
     def poll(self) -> str | None:
         try:

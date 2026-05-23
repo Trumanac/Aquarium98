@@ -354,7 +354,7 @@ class FishSpriteCache:
     """
 
     @staticmethod
-    def build(sheet: pygame.Surface, layer: int, scale: float) -> list[pygame.Surface]:
+    def build(sheet: pygame.Surface, layer: int, scale: float, full_3_rows: bool = False) -> list[pygame.Surface]:
         sw, sh = sheet.get_size()
         fw = sw // 3
         fh = sh // 3
@@ -363,7 +363,8 @@ class FishSpriteCache:
         draw_h = max(10, int(110 * ls * scale + 0.5))
 
         right_frames: list[pygame.Surface] = []
-        for i in range(6):
+        frame_count = 9 if full_3_rows else 6
+        for i in range(frame_count):
             col = i % 3
             row = i // 3
             sub = sheet.subsurface(pygame.Rect(col * fw, row * fh, fw, fh)).copy()
@@ -1001,13 +1002,14 @@ class Renderer:
         # small fish (Neons, Guppies) appear smaller than large ones (Catfish).
         sp_ss     = _species_size_scale(f.sp)
         eff_scale = f.scale * sp_ss
+        is_frog = bool(f.sp.get("frog"))
         if f.cached_surfaces is None or f.cache_key != cache_key:
             if is_hermit:
                 f.cached_surfaces = FishSpriteCache.build_hermit(sheet, f.layer, eff_scale)
             elif is_algae_seeker:
                 f.cached_surfaces = FishSpriteCache.build_algae_eater(sheet, f.layer, eff_scale)
             else:
-                f.cached_surfaces = FishSpriteCache.build(sheet, f.layer, eff_scale)
+                f.cached_surfaces = FishSpriteCache.build(sheet, f.layer, eff_scale, full_3_rows=is_frog)
             f.cache_key = cache_key
 
         if is_hermit:
@@ -1019,8 +1021,11 @@ class Renderer:
             base = 12 if f.facing > 0 else 15
             idx  = base + (f.frame % 3)
         else:
-            # frame 0-5 = right-facing; 6-11 = left-facing
-            idx = f.frame + (0 if f.facing > 0 else 6)
+            # Generic species: use half of cached list for right-facing and mirror for left.
+            # This supports both 6-frame species and 9-frame frog sheets.
+            right_count = max(1, len(f.cached_surfaces) // 2)
+            frame = int(f.frame) % right_count
+            idx = frame + (0 if f.facing > 0 else right_count)
         spr = f.cached_surfaces[idx]
 
         # Rotate side-wall grazers so the fish runs vertically along the glass
