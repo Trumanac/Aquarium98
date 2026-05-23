@@ -1,15 +1,19 @@
 name: Build & Release
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Triggered manually via GitHub UI or API.
-# Smoke-tests on all three platforms before publishing the release.
-# Produces a single cross-platform source zip with SHA-256 checksum.
+# Triggered automatically when a v* tag is pushed (e.g. git push origin v1.2),
+# OR manually via GitHub Actions UI.
+# Smoke-tests on all three platforms, builds a source zip, and publishes a
+# GitHub Release with SHA-256 checksum.
 # ─────────────────────────────────────────────────────────────────────────────
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. 1.2.0)"
+        description: "Release version (e.g. 1.2.0) — no leading v"
         required: true
         type: string
       prerelease:
@@ -22,9 +26,36 @@ permissions:
   contents: write
 
 jobs:
+  # ── 0. Compute version string ───────────────────────────────────────────────
+  setup:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version:    ${{ steps.ver.outputs.version }}
+      tag:        ${{ steps.ver.outputs.tag }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
+    steps:
+      - name: Compute version / tag
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+            VERSION="${TAG#v}"
+            PRERELEASE="false"
+          else
+            VERSION="${{ inputs.version }}"
+            TAG="v${VERSION}"
+            PRERELEASE="${{ inputs.prerelease }}"
+          fi
+          echo "version=$VERSION"       >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"               >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "Resolved: version=$VERSION  tag=$TAG  prerelease=$PRERELEASE"
+
   # ── 1. Smoke-test on every supported OS ────────────────────────────────────
   smoke-test:
     name: Smoke test (${{ matrix.os }})
+    needs: setup
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -41,7 +72,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      # Linux needs a virtual display and GTK for pystray
       - name: Install Linux system deps
         if: runner.os == 'Linux'
         run: |
@@ -67,13 +97,14 @@ jobs:
               errors.append(f"{p}: {e}")
           if errors:
             print("\n".join(errors)); sys.exit(1)
-          print(f"All Python files parse cleanly.")
+          print("All Python files parse cleanly.")
 
       - name: Import check
         run: python -c "import src.config; import src.renderer; import src.simulation.fish; print('imports OK')"
 
       - name: Config round-trip check
-        run: python -c "
+        run: |
+          python -c "
           import src.config as c
           d = c.load()
           assert 'persist_state' in d
@@ -84,8 +115,10 @@ jobs:
   # ── 2. Build release zip (Linux only — source is cross-platform) ───────────
   build:
     name: Build release zip
-    needs: smoke-test
+    needs: [setup, smoke-test]
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.setup.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -100,30 +133,34 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Build zip
-        run: python build.py --version ${{ inputs.version }}
+        run: python build.py --version ${{ env.VERSION }}
 
       - name: Generate SHA-256 checksum
         run: |
           cd dist
-          sha256sum "Aquarium98-v${{ inputs.version }}.zip" \
-            > "Aquarium98-v${{ inputs.version }}.zip.sha256"
+          sha256sum "Aquarium98-v${{ env.VERSION }}.zip" \
+            > "Aquarium98-v${{ env.VERSION }}.zip.sha256"
           echo "── Checksum ──"
-          cat "Aquarium98-v${{ inputs.version }}.zip.sha256"
+          cat "Aquarium98-v${{ env.VERSION }}.zip.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-zip
           path: |
-            dist/Aquarium98-v${{ inputs.version }}.zip
-            dist/Aquarium98-v${{ inputs.version }}.zip.sha256
+            dist/Aquarium98-v${{ env.VERSION }}.zip
+            dist/Aquarium98-v${{ env.VERSION }}.zip.sha256
           retention-days: 7
 
   # ── 3. Publish GitHub Release ──────────────────────────────────────────────
   publish:
     name: Publish release
-    needs: build
+    needs: [setup, build]
     runs-on: ubuntu-latest
+    env:
+      VERSION:    ${{ needs.setup.outputs.version }}
+      TAG:        ${{ needs.setup.outputs.tag }}
+      PRERELEASE: ${{ needs.setup.outputs.prerelease }}
 
     steps:
       - uses: actions/checkout@v4
@@ -137,14 +174,14 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ inputs.version }}
-          name: "Aquarium 98 v${{ inputs.version }}"
-          prerelease: ${{ inputs.prerelease }}
+          tag_name:               ${{ env.TAG }}
+          name:                   "Aquarium 98 ${{ env.TAG }}"
+          prerelease:             ${{ env.PRERELEASE }}
           generate_release_notes: true
           body: |
             ## Installation
 
-            Download `Aquarium98-v${{ inputs.version }}.zip`, unzip, and run:
+            Download `Aquarium98-v${{ env.VERSION }}.zip`, unzip, and run:
 
             | Platform | Command |
             |----------|---------|
@@ -159,6 +196,5 @@ jobs:
 
             **Requirements (source only):** Python 3.9+
           files: |
-            dist/Aquarium98-v${{ inputs.version }}.zip
-            dist/Aquarium98-v${{ inputs.version }}.zip.sha256
-
+            dist/Aquarium98-v${{ env.VERSION }}.zip
+            dist/Aquarium98-v${{ env.VERSION }}.zip.sha256
