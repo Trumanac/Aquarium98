@@ -1,0 +1,49 @@
+[project]
+name = "aquarium98"
+version = "1.0.0"
+description = "A retro Windows 98-styled desktop aquarium widget"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "trumanac", url = "https://github.com/trumanac" },
+]
+keywords = ["aquarium", "desktop-widget", "pygame", "windows98", "retro"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Other Environment",
+    "Intended Audience :: End Users/Desktop",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "pygame-ce>=2.4.0",
+    "Pillow>=10.0.0",
+    "pystray>=0.19.0",
+]
+
+[project.urls]
+Homepage   = "https://github.com/trumanac/Aquarium98"
+Repository = "https://github.com/trumanac/Aquarium98"
+"Bug Tracker" = "https://github.com/trumanac/Aquarium98/issues"
+Changelog  = "https://github.com/trumanac/Aquarium98/releases"
+
+[project.scripts]
+aquarium98 = "aquarium:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+"*" = ["assets/**/*", "config.default.json"]

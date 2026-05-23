@@ -1,0 +1,191 @@
+"""
+treasure_chest.py — Animated treasure chest decor for Aquarium 98.
+
+The chest sits on the tank floor over the left rocky outcrop, cycling:
+  cooldown → opening (9-frame animation) → open (glow + waits for click)
+           → closing (reverse animation) → cooldown
+
+Difficulty scales both the cooldown between openings and the coin reward:
+  1 (Easy)   : cooldown  90-180 s,  coins 15-35
+  2 (Normal) : cooldown 150-300 s,  coins 10-25
+  3 (Hard)   : cooldown 240-480 s,  coins  5-15
+
+Sprite sheet: assets/sprites/decor/TreasureChest.png
+  3 cols × 3 rows = 9 frames (row-major, left→right, top→bottom)
+  Frame 0      : fully closed
+  Frames 1-5   : opening animation
+  Frames 6-8   : fully open / coin-spill poses (cycled while idle-open)
+"""
+from __future__ import annotations
+
+import random
+from dataclasses import dataclass, field
+
+import pygame
+
+# ---------------------------------------------------------------------------
+# Layout constants (interior reference space: 448 × 274 px)
+# ---------------------------------------------------------------------------
+CHEST_IX    = 72    # interior X of chest centre  (left rocky outcrop)
+CHEST_IY    = 272   # interior Y of chest bottom  (near tank floor)
+CHEST_REF_W = 90    # reference draw width  (at 1:1 scale)
+CHEST_REF_H = 49    # reference draw height (ratio ≈ 1.84 matches sprite)
+
+# ---------------------------------------------------------------------------
+# Animation timing
+# ---------------------------------------------------------------------------
+_OPEN_FPS   = 7.0   # frames per second during opening
+_CLOSE_FPS  = 9.0   # slightly faster on close
+OPEN_WAIT   = 28.0  # seconds the chest stays open before auto-closing
+
+# ---------------------------------------------------------------------------
+# Economy tables
+# ---------------------------------------------------------------------------
+_COIN_RANGES: dict[int, tuple[int, int]] = {
+    1: (15, 35),
+    2: (10, 25),
+    3: (5,  15),
+}
+
+_COOLDOWN: dict[int, tuple[int, int]] = {
+    1: (90,  180),
+    2: (150, 300),
+    3: (240, 480),
+}
+
+# How many existing bubbles to redirect to the chest on open
+_BURST_COUNT = 6
+
+
+# ---------------------------------------------------------------------------
+# Chest state machine
+# ---------------------------------------------------------------------------
+@dataclass
+class TreasureChest:
+    state: str   = "cooldown"   # cooldown | opening | open | closing
+    timer: float = 0.0          # seconds until next transition
+    frame: float = 0.0          # float frame index (0.0 – 8.9)
+    pending_coins: int = 0      # coins to award when clicked
+
+    # Screen rect updated each draw() — used for click detection
+    _rect: pygame.Rect = field(default_factory=lambda: pygame.Rect(0, 0, 0, 0))
+
+    # ------------------------------------------------------------------ #
+    def reset_cooldown(self, difficulty: int = 2) -> None:
+        lo, hi = _COOLDOWN.get(difficulty, _COOLDOWN[2])
+        self.timer = random.uniform(lo, hi)
+        self.state = "cooldown"
+        self.frame = 0.0
+
+    # ------------------------------------------------------------------ #
+    def update(self, dt: float, cfg: dict) -> list[tuple[float, float]]:
+        """Advance the state machine one tick.
+
+        Returns a list of interior (x, y) positions for burst bubbles;
+        non-empty only during the single tick that enters the 'open' state.
+        """
+        burst: list[tuple[float, float]] = []
+        diff = int(cfg.get("difficulty", 2))
+
+        if self.state == "cooldown":
+            self.timer -= dt
+            if self.timer <= 0.0:
+                lo, hi = _COIN_RANGES.get(diff, _COIN_RANGES[2])
+                self.pending_coins = random.randint(lo, hi)
+                self.state = "opening"
+                self.frame = 0.0
+
+        elif self.state == "opening":
+            self.frame += dt * _OPEN_FPS
+            if self.frame >= 6.0:
+                self.frame = 6.0
+                self.state = "open"
+                self.timer = OPEN_WAIT
+                # Spawn burst bubbles from chest top
+                for _ in range(_BURST_COUNT):
+                    bx = CHEST_IX + random.uniform(-24, 24)
+                    by = CHEST_IY - random.uniform(10, 28)
+                    burst.append((bx, by))
+
+        elif self.state == "open":
+            # Shimmer: slowly cycle frames 6 / 7 / 8
+            self.frame = 6.0 + (int(self.timer * 2.5) % 3)
+            self.timer -= dt
+            if self.timer <= 0.0:
+                # Timed out without a click — close without reward
+                self.pending_coins = 0
+                self.state = "closing"
+                self.frame = 8.0
+
+        elif self.state == "closing":
+            self.frame -= dt * _CLOSE_FPS
+            if self.frame <= 0.0:
+                self.frame = 0.0
+                self.reset_cooldown(diff)
+
+        return burst
+
+    # ------------------------------------------------------------------ #
+    def handle_click(self, screen_x: int, screen_y: int) -> int:
+        """Return coin reward if the chest is open and the click lands on it."""
+        if self.state != "open":
+            return 0
+        if self._rect.collidepoint(screen_x, screen_y):
+            reward = self.pending_coins
+            self.pending_coins = 0
+            self.state = "closing"
+            self.frame = 8.0
+            return reward
+        return 0
+
+    # ------------------------------------------------------------------ #
+    def draw(self, surface: pygame.Surface, tr: pygame.Rect,
+             sheet: pygame.Surface | None) -> None:
+        """Render the chest scaled to the current tank rect."""
+        if sheet is None:
+            return
+
+        rx = tr.w / 448
+        ry = tr.h / 274
+        # Use uniform scale to preserve the sprite's natural aspect ratio
+        scale = min(rx, ry)
+        dw = max(20, int(CHEST_REF_W * scale))
+        dh = max(10, int(CHEST_REF_H * scale))
+        cx = tr.left + int(CHEST_IX * rx)
+        cy = tr.top  + int(CHEST_IY * ry)
+        sx = cx - dw // 2
+        sy = cy - dh        # top of chest
+
+        # Extract frame from 3×3 sheet
+        fi  = max(0, min(8, int(self.frame)))
+        sw, sh = sheet.get_size()
+        fw, fh = sw // 3, sh // 3
+        col, row = fi % 3, fi // 3
+        frame_surf = sheet.subsurface(pygame.Rect(col * fw, row * fh, fw, fh))
+        scaled = pygame.transform.smoothscale(frame_surf, (dw, dh))
+
+        # Pulsing glow halo when open (drawn behind chest)
+        if self.state == "open":
+            pulse = 0.55 + 0.45 * abs(((self.timer * 2.5) % 2.0) - 1.0)
+            glow_a = max(0, min(255, int(25 + 50 * pulse)))
+            glow_w = dw + 18
+            glow_h = dh + 14
+            glow = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
+            pygame.draw.ellipse(glow, (255, 215, 50, glow_a), glow.get_rect())
+            surface.blit(glow, (sx - 9, sy - 7))
+
+        surface.blit(scaled, (sx, sy))
+
+        # Cache screen rect for click testing
+        self._rect = pygame.Rect(sx, sy, dw, dh)
+
+
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
+def make_chest(difficulty: int = 2) -> TreasureChest:
+    chest = TreasureChest()
+    # First opening is quick so players discover the mechanic early
+    chest.timer = random.uniform(20, 45)
+    chest.state = "cooldown"
+    return chest

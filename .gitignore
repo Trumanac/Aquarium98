@@ -1,0 +1,81 @@
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.pyw
+*.so
+*.egg
+*.egg-info/
+.eggs/
+MANIFEST
+
+# ── Virtual environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# ── Build / distribution ─────────────────────────────────────────────────────
+dist/
+build/
+*.zip
+*.whl
+*.tar.gz
+
+# ── Runtime / logs ───────────────────────────────────────────────────────────
+*.log
+logs/
+aquarium98.lock
+
+# ── User config & state (per-install, not committed) ─────────────────────────
+config.json
+state.json
+fish_state.json
+
+# ── Generated icons (built by icon_gen.py on first run) ──────────────────────
+assets/icon/icon.ico
+assets/icon/icon.icns
+assets/icon/icon.png
+
+# ── Unused / archived source assets ──────────────────────────────────────────
+assets/_unused/
+
+# ── OS artefacts ─────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ── IDE / editor ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ── pytest / coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ── mypy / type checking ─────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ── macOS autostart plist (written at runtime by startup.py) ─────────────────
+# (Do not commit — path contains user home directory)
+# ~/Library/LaunchAgents/com.trumanac.aquarium98.plist  ← outside repo anyway

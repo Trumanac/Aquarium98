@@ -1,0 +1,114 @@
+name: CI
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Runs on every push and pull request.
+# Validates syntax, imports, and config round-trips on all three platforms.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  lint-and-test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.9", "3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # Linux only: virtual display + GTK system tray deps
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libsdl2-dev xvfb \
+            libappindicator3-1 gir1.2-appindicator3-0.1
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # ── Syntax check ───────────────────────────────────────────────────────
+      - name: Syntax check (all .py files)
+        shell: python
+        run: |
+          import ast, pathlib, sys
+          skip = {".venv", "venv", "build", "dist", "__pycache__"}
+          errors = []
+          for p in pathlib.Path(".").rglob("*.py"):
+            if any(part in p.parts for part in skip):
+              continue
+            try:
+              ast.parse(p.read_text(encoding="utf-8"))
+            except SyntaxError as e:
+              errors.append(f"{p}: {e}")
+          if errors:
+            print("\n".join(errors)); sys.exit(1)
+          print(f"All Python files parse cleanly.")
+
+      # ── Import check ───────────────────────────────────────────────────────
+      - name: Import check
+        run: |
+          python -c "
+          import src.config
+          import src.renderer
+          import src.simulation.fish
+          import src.simulation.population
+          import src.simulation.environment
+          import src.treasure_chest
+          import src.startup
+          print('All imports OK')
+          "
+
+      # ── Config validation ──────────────────────────────────────────────────
+      - name: Config defaults round-trip
+        run: |
+          python -c "
+          import src.config as c
+          d = c.load()
+          assert d.get('persist_state') is True,  'persist_state must default True'
+          assert d.get('night_cycle')   is True,  'night_cycle must default True'
+          assert d.get('max_bubbles')   == 30,    'max_bubbles must default 30'
+          print('Config defaults OK:', {k: d[k] for k in ('persist_state','night_cycle','max_bubbles')})
+          "
+
+      # ── Fish persistence round-trip ────────────────────────────────────────
+      - name: Fish persistence round-trip
+        run: |
+          python -c "
+          from src.simulation.fish import make_fish, fish_to_dict, fish_from_dict
+          f = make_fish(448, 274)
+          f.age = 99999; f.name = 'Persistence Pete'
+          d = fish_to_dict(f)
+          f2 = fish_from_dict(d, 448, 274)
+          assert f2 is not None, 'fish_from_dict returned None'
+          assert f2.name == 'Persistence Pete', f'name mismatch: {f2.name}'
+          assert abs(f2.age - 99999) < 1, f'age mismatch: {f2.age}'
+          print('Fish round-trip OK:', f2.name, 'age', f2.age)
+          "
+
+      # ── Startup module cross-platform sanity ───────────────────────────────
+      - name: Startup module sanity
+        run: |
+          python -c "
+          from src.startup import set_startup, is_startup_enabled
+          # On CI we don't write to the real system — just verify no crash
+          result = set_startup(False)   # disable is always safe
+          print('set_startup(False) returned:', result)
+          state = is_startup_enabled()
+          print('is_startup_enabled():', state)
+          print('Startup module OK')
+          "

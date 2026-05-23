@@ -1,0 +1,164 @@
+name: Build & Release
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Triggered manually via GitHub UI or API.
+# Smoke-tests on all three platforms before publishing the release.
+# Produces a single cross-platform source zip with SHA-256 checksum.
+# ─────────────────────────────────────────────────────────────────────────────
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.2.0)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  # ── 1. Smoke-test on every supported OS ────────────────────────────────────
+  smoke-test:
+    name: Smoke test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # Linux needs a virtual display and GTK for pystray
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libsdl2-dev xvfb \
+            libappindicator3-1 gir1.2-appindicator3-0.1
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Syntax check (all .py files)
+        shell: python
+        run: |
+          import ast, pathlib, sys
+          errors = []
+          for p in pathlib.Path(".").rglob("*.py"):
+            if any(part in p.parts for part in [".venv", "venv", "build", "dist"]):
+              continue
+            try:
+              ast.parse(p.read_text(encoding="utf-8"))
+            except SyntaxError as e:
+              errors.append(f"{p}: {e}")
+          if errors:
+            print("\n".join(errors)); sys.exit(1)
+          print(f"All Python files parse cleanly.")
+
+      - name: Import check
+        run: python -c "import src.config; import src.renderer; import src.simulation.fish; print('imports OK')"
+
+      - name: Config round-trip check
+        run: python -c "
+          import src.config as c
+          d = c.load()
+          assert 'persist_state' in d
+          assert 'night_cycle' in d
+          print('config round-trip OK')
+          "
+
+  # ── 2. Build release zip (Linux only — source is cross-platform) ───────────
+  build:
+    name: Build release zip
+    needs: smoke-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build zip
+        run: python build.py --version ${{ inputs.version }}
+
+      - name: Generate SHA-256 checksum
+        run: |
+          cd dist
+          sha256sum "Aquarium98-v${{ inputs.version }}.zip" \
+            > "Aquarium98-v${{ inputs.version }}.zip.sha256"
+          echo "── Checksum ──"
+          cat "Aquarium98-v${{ inputs.version }}.zip.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-zip
+          path: |
+            dist/Aquarium98-v${{ inputs.version }}.zip
+            dist/Aquarium98-v${{ inputs.version }}.zip.sha256
+          retention-days: 7
+
+  # ── 3. Publish GitHub Release ──────────────────────────────────────────────
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-zip
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: "Aquarium 98 v${{ inputs.version }}"
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            Download `Aquarium98-v${{ inputs.version }}.zip`, unzip, and run:
+
+            | Platform | Command |
+            |----------|---------|
+            | Windows  | Double-click `run.bat` |
+            | macOS    | Double-click `run.command` (or `./run.sh`) |
+            | Linux    | `./run.sh` |
+
+            No Python installation required — the launcher creates an isolated
+            virtual environment automatically on first run.
+
+            Verify your download with the `.sha256` checksum file.
+
+            **Requirements (source only):** Python 3.9+
+          files: |
+            dist/Aquarium98-v${{ inputs.version }}.zip
+            dist/Aquarium98-v${{ inputs.version }}.zip.sha256
+
