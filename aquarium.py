@@ -808,6 +808,8 @@ def main() -> int:
                 pending_resize = None
                 _saved_pos = win_mod.get_position(sdl_win)
                 surface = win_mod.resize_surface(_rw, _rh)
+                # set_mode() recreates the SDL window — must refresh the handle.
+                sdl_win = win_mod.get_sdl_window()
                 if sdl_win and _saved_pos:
                     win_mod.set_position(sdl_win, *_saved_pos)
                 renderer.surface = surface

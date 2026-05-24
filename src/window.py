@@ -201,6 +201,21 @@ def resize_surface(w: int, h: int) -> pygame.Surface:
     return pygame.display.set_mode((w, h), pygame.NOFRAME | pygame.RESIZABLE)
 
 
+def get_sdl_window():
+    """Return a fresh SDL Window handle for the current display.
+
+    Must be called after every pygame.display.set_mode() call (including
+    resize_surface) because set_mode() recreates the underlying SDL window,
+    invalidating any previously held Window object.
+    """
+    try:
+        from pygame._sdl2 import Window  # noqa: PLC0415
+        return Window.from_display_module()
+    except Exception as e:  # noqa: BLE001
+        log.debug("get_sdl_window failed: %s", e)
+        return None
+
+
 def in_title_bar(x: int, y: int, w: int, h: int) -> bool:
     return 0 <= x <= w and 0 <= y <= TITLE_BAR_H
 
