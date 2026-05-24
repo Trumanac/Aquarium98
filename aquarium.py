@@ -737,6 +737,12 @@ def main() -> int:
                     drag_mode = None
                     drag_rel_accum = (0, 0)
                 elif ev.type == pygame.MOUSEMOTION:
+                    # Safety: MOUSEBUTTONUP may not be delivered if the cursor
+                    # leaves the window while dragging.  Cancel drag when we
+                    # detect the button is no longer held.
+                    if drag_mode and not pygame.mouse.get_pressed()[0]:
+                        drag_mode = None
+                        drag_rel_accum = (0, 0)
                     if drag_mode:
                         if drag_mode == "move":
                             if USE_ABS_CURSOR:
