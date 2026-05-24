@@ -67,6 +67,9 @@ LOCK_FILE = Path.home() / ".aquarium98.lock"
 SIM_HZ = 20
 RENDER_FPS = 30
 IS_WINDOWS = platform.system() == "Windows"
+# True on platforms where win_mod.get_screen_cursor() returns real coords.
+# Linux gets absolute cursor via Xlib; macOS falls back to ev.rel accumulation.
+USE_ABS_CURSOR = IS_WINDOWS or platform.system() == "Linux"
 
 
 def _setup_logging() -> None:
@@ -703,19 +706,18 @@ def main() -> int:
                             locked = bool(cfg.get("locked", False))
                             if not locked and win_mod.in_resize_handle(mx, my, *surface.get_size()):
                                 drag_mode = "resize"
-                                drag_screen_start = win_mod.get_screen_cursor() if IS_WINDOWS else (mx, my)
+                                drag_screen_start = win_mod.get_screen_cursor() if USE_ABS_CURSOR else (mx, my)
                                 drag_orig = surface.get_size()
                                 drag_rel_accum = (0, 0)
                             elif not locked and win_mod.in_title_bar(mx, my, *surface.get_size()):
                                 drag_mode = "move"
-                                if IS_WINDOWS:
+                                if USE_ABS_CURSOR:
                                     # Record where in the window the user clicked (screen space)
                                     sc = win_mod.get_screen_cursor()
                                     wp = win_mod.get_position(sdl_win) or (0, 0)
                                     drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
                                 else:
-                                    # On Linux/macOS, anchor movement to the window position
-                                    # at drag start, then apply bounded accumulated rel deltas.
+                                    # macOS fallback: anchor to window position at drag start.
                                     drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
                                     drag_rel_accum = (0, 0)
                     if ev.button == 3:
@@ -738,9 +740,9 @@ def main() -> int:
                 elif ev.type == pygame.MOUSEMOTION:
                     if drag_mode:
                         if drag_mode == "move":
-                            if IS_WINDOWS:
-                                # Use GetCursorPos (absolute screen coords) so window movement
-                                # never feeds back as a spurious ev.rel and causes jitter.
+                            if USE_ABS_CURSOR:
+                                # Use absolute screen cursor (GetCursorPos / Xlib) so window
+                                # movement never feeds back as a spurious ev.rel jitter.
                                 cx, cy = win_mod.get_screen_cursor()
                                 win_mod.set_position(sdl_win,
                                                      cx - drag_offset[0],
@@ -748,8 +750,7 @@ def main() -> int:
                                 # Discard synthetic motion events queued by SDL after move.
                                 pygame.event.clear(pygame.MOUSEMOTION)
                             else:
-                                # Linux/macOS path: accumulate bounded rel movement and
-                                # apply from drag-start window position.
+                                # macOS fallback: accumulate bounded rel movement.
                                 rx = max(-40, min(40, int(ev.rel[0])))
                                 ry = max(-40, min(40, int(ev.rel[1])))
                                 drag_rel_accum = (
@@ -760,11 +761,12 @@ def main() -> int:
                                                      drag_win_start[0] + drag_rel_accum[0],
                                                      drag_win_start[1] + drag_rel_accum[1])
                         elif drag_mode == "resize":
-                            if IS_WINDOWS:
+                            if USE_ABS_CURSOR:
                                 cx, cy = win_mod.get_screen_cursor()
                                 dx = cx - drag_screen_start[0]
                                 dy = cy - drag_screen_start[1]
                             else:
+                                # macOS fallback: bounded rel accumulation.
                                 rx = max(-40, min(40, int(ev.rel[0])))
                                 ry = max(-40, min(40, int(ev.rel[1])))
                                 drag_rel_accum = (
@@ -786,7 +788,7 @@ def main() -> int:
                         locked = bool(cfg.get("locked", False))
                         if not locked and win_mod.in_title_bar(mx2, my2, *surface.get_size()):
                             drag_mode = "move"
-                            if IS_WINDOWS:
+                            if USE_ABS_CURSOR:
                                 sc = win_mod.get_screen_cursor()
                                 wp = win_mod.get_position(sdl_win) or (0, 0)
                                 drag_offset = (sc[0] - wp[0], sc[1] - wp[1])

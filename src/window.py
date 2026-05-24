@@ -133,22 +133,47 @@ def set_always_on_top(sdl_win, on: bool) -> None:
         log.debug("set_always_on_top failed: %s", e)
 
 
+_xlib_display = None  # cached Xlib.display.Display for Linux cursor queries
+
+
+def _get_xlib_display():
+    """Lazily initialise a cached Xlib Display for Linux global cursor queries."""
+    global _xlib_display
+    if _xlib_display is None:
+        try:
+            from Xlib import display as _xdisp  # noqa: PLC0415
+            _xlib_display = _xdisp.Display()
+        except Exception as e:  # noqa: BLE001
+            log.debug("Xlib display unavailable (cursor fallback active): %s", e)
+            _xlib_display = False  # mark permanently unavailable
+    return _xlib_display if _xlib_display else None
+
+
 def get_screen_cursor() -> tuple[int, int]:
     """Return the cursor position in absolute screen (desktop) coordinates.
 
-    On Windows this calls GetCursorPos via ctypes — the result is unaffected by
-    any window movement that happens between events, so it never produces the
-    backwards ev.rel feedback loop that causes drag jitter.
-    Falls back to (0, 0) on platforms where ctypes.windll is unavailable.
+    On Windows calls GetCursorPos via ctypes.
+    On Linux queries the X11 root window pointer via python-xlib.
+    Both avoid the backwards ev.rel feedback loop that causes drag jitter on
+    borderless windows.  Falls back to (0, 0) when unavailable (macOS, Wayland).
     """
-    if platform.system() == "Windows":
+    _sys = platform.system()
+    if _sys == "Windows":
         import ctypes  # noqa: PLC0415
         class _PT(ctypes.Structure):                        # pylint: disable=invalid-name
             _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
         pt = _PT()
         ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))  # type: ignore[attr-defined]
         return int(pt.x), int(pt.y)
-    # Non-Windows: return 0,0; callers fall back gracefully
+    if _sys == "Linux":
+        d = _get_xlib_display()
+        if d is not None:
+            try:
+                r = d.screen().root.query_pointer()
+                return r.root_x, r.root_y
+            except Exception:  # noqa: BLE001
+                pass
+    # macOS / Wayland / fallback
     return (0, 0)
 
 
