@@ -192,6 +192,21 @@ jobs:
             No Python installation required — the launcher creates an isolated
             virtual environment automatically on first run.
 
+            ### macOS (Unsigned Release) Quick Setup
+
+            If macOS blocks launch because the app is unsigned, open Terminal and run:
+
+            ```bash
+            # Change this path if you unzipped somewhere else
+            cd /Applications/Aquarium98
+            chmod +x run.command run.sh
+            xattr -dr com.apple.quarantine .
+            ./run.command
+            ```
+
+            If launch is still blocked, go to **System Settings → Privacy & Security**
+            and click **Open Anyway**, then launch again.
+
             Verify your download with the `.sha256` checksum file.
 
             **Requirements (source only):** Python 3.9+
