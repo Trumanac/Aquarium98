@@ -67,9 +67,8 @@ LOCK_FILE = Path.home() / ".aquarium98.lock"
 SIM_HZ = 20
 RENDER_FPS = 30
 IS_WINDOWS = platform.system() == "Windows"
-# True on platforms where win_mod.get_screen_cursor() returns real coords.
-# Linux gets absolute cursor via Xlib; macOS falls back to ev.rel accumulation.
-USE_ABS_CURSOR = IS_WINDOWS or platform.system() == "Linux"
+# USE_ABS_CURSOR is set at runtime in run() via win_mod.cursor_available().
+# Windows=GetCursorPos, Linux=Xlib, macOS=SDL2 bundled lib; rel-accum fallback.
 
 
 def _setup_logging() -> None:
@@ -168,6 +167,9 @@ def main() -> int:
         show_splash()
 
         surface, sdl_win, font = win_mod.init_window(cfg)
+        # Determine whether absolute screen cursor is available on this platform.
+        # Must be called after init_window so pygame/SDL2 is fully initialised.
+        USE_ABS_CURSOR = win_mod.cursor_available()
         renderer = Renderer(surface, font)
         context = ContextMenu(font)
         settings = SettingsDialog(font)

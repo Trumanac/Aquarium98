@@ -149,13 +149,68 @@ def _get_xlib_display():
     return _xlib_display if _xlib_display else None
 
 
+_macos_sdl2_fn = None  # cached SDL_GetGlobalMouseState callable for macOS
+
+
+def _get_macos_sdl2_fn():
+    """Find SDL_GetGlobalMouseState from SDL2 on macOS.
+
+    Searches homebrew paths and the pygame package bundle so it works with
+    system, homebrew, and pip-installed pygame-ce on both x86 and arm64.
+    Returns a ready-to-call ctypes function or None if SDL2 cannot be found.
+    """
+    global _macos_sdl2_fn
+    if _macos_sdl2_fn is None:
+        import ctypes, ctypes.util, os, glob  # noqa: PLC0415
+        candidates: list[str] = []
+        found = ctypes.util.find_library("SDL2")
+        if found:
+            candidates.append(found)
+        candidates += [
+            "/opt/homebrew/lib/libSDL2.dylib",   # arm64 homebrew
+            "/usr/local/lib/libSDL2.dylib",       # x86 homebrew
+        ]
+        # pygame-ce bundles its own SDL2 inside the package directory
+        try:
+            import pygame as _pg  # noqa: PLC0415
+            _pkg = os.path.dirname(_pg.__file__)
+            candidates += glob.glob(os.path.join(_pkg, "libSDL2*.dylib"))
+            candidates += glob.glob(os.path.join(_pkg, ".dylibs", "libSDL2*.dylib"))
+        except Exception:  # noqa: BLE001
+            pass
+        for name in candidates:
+            if not name:
+                continue
+            try:
+                lib = ctypes.CDLL(name)
+                fn = lib.SDL_GetGlobalMouseState
+                fn.restype = ctypes.c_uint32
+                fn.argtypes = [
+                    ctypes.POINTER(ctypes.c_int),
+                    ctypes.POINTER(ctypes.c_int),
+                ]
+                # Quick probe to confirm it's callable
+                _x, _y = ctypes.c_int(0), ctypes.c_int(0)
+                fn(ctypes.byref(_x), ctypes.byref(_y))
+                _macos_sdl2_fn = fn
+                log.debug("macOS SDL2 cursor: using %s", name)
+                break
+            except Exception:  # noqa: BLE001
+                continue
+        if _macos_sdl2_fn is None:
+            log.debug("macOS SDL2 cursor unavailable; drag will use rel fallback")
+            _macos_sdl2_fn = False  # mark permanently unavailable
+    return _macos_sdl2_fn if _macos_sdl2_fn else None
+
+
 def get_screen_cursor() -> tuple[int, int]:
     """Return the cursor position in absolute screen (desktop) coordinates.
 
-    On Windows calls GetCursorPos via ctypes.
-    On Linux queries the X11 root window pointer via python-xlib.
-    Both avoid the backwards ev.rel feedback loop that causes drag jitter on
-    borderless windows.  Falls back to (0, 0) when unavailable (macOS, Wayland).
+    Windows  — GetCursorPos via ctypes.
+    Linux    — X11 root window pointer via python-xlib.
+    macOS    — SDL_GetGlobalMouseState via ctypes (from bundled or system SDL2).
+    All three avoid the backwards ev.rel feedback loop on borderless windows.
+    Falls back to (0, 0) when unavailable (Wayland without X, no SDL2 found).
     """
     _sys = platform.system()
     if _sys == "Windows":
@@ -173,8 +228,30 @@ def get_screen_cursor() -> tuple[int, int]:
                 return r.root_x, r.root_y
             except Exception:  # noqa: BLE001
                 pass
-    # macOS / Wayland / fallback
+    if _sys == "Darwin":
+        import ctypes  # noqa: PLC0415
+        fn = _get_macos_sdl2_fn()
+        if fn is not None:
+            x, y = ctypes.c_int(0), ctypes.c_int(0)
+            fn(ctypes.byref(x), ctypes.byref(y))
+            return x.value, y.value
     return (0, 0)
+
+
+def cursor_available() -> bool:
+    """Return True if get_screen_cursor() can return real screen coordinates.
+
+    Call once after pygame is initialised to decide whether to use the
+    absolute-cursor drag path or the rel-accumulation fallback.
+    """
+    _sys = platform.system()
+    if _sys == "Windows":
+        return True
+    if _sys == "Linux":
+        return _get_xlib_display() is not None
+    if _sys == "Darwin":
+        return _get_macos_sdl2_fn() is not None
+    return False
 
 
 def get_position(sdl_win) -> tuple[int, int] | None:
