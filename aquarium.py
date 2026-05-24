@@ -712,7 +712,6 @@ def main() -> int:
                             elif not locked and win_mod.in_title_bar(mx, my, *surface.get_size()):
                                 drag_mode = "move"
                                 if USE_ABS_CURSOR:
-                                    # Record where in the window the user clicked (screen space)
                                     sc = win_mod.get_screen_cursor()
                                     wp = win_mod.get_position(sdl_win) or (0, 0)
                                     drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
@@ -741,14 +740,12 @@ def main() -> int:
                     if drag_mode:
                         if drag_mode == "move":
                             if USE_ABS_CURSOR:
-                                # Use absolute screen cursor (GetCursorPos / Xlib) so window
-                                # movement never feeds back as a spurious ev.rel jitter.
                                 cx, cy = win_mod.get_screen_cursor()
                                 win_mod.set_position(sdl_win,
                                                      cx - drag_offset[0],
                                                      cy - drag_offset[1])
-                                # Discard synthetic motion events queued by SDL after move.
-                                pygame.event.clear(pygame.MOUSEMOTION)
+                                if IS_WINDOWS:
+                                    pygame.event.clear(pygame.MOUSEMOTION)
                             else:
                                 # macOS fallback: accumulate bounded rel movement.
                                 rx = max(-40, min(40, int(ev.rel[0])))
