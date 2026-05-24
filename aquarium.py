@@ -396,6 +396,9 @@ def main() -> int:
         # For resize: screen cursor position and surface size at drag start
         drag_screen_start = (0, 0)
         drag_orig         = (0, 0)
+        # Non-Windows drag baseline/accumulator to avoid position feedback loops.
+        drag_win_start    = (0, 0)
+        drag_rel_accum    = (0, 0)
 
         while running:
             now = time.perf_counter()
@@ -702,6 +705,7 @@ def main() -> int:
                                 drag_mode = "resize"
                                 drag_screen_start = win_mod.get_screen_cursor() if IS_WINDOWS else (mx, my)
                                 drag_orig = surface.get_size()
+                                drag_rel_accum = (0, 0)
                             elif not locked and win_mod.in_title_bar(mx, my, *surface.get_size()):
                                 drag_mode = "move"
                                 if IS_WINDOWS:
@@ -710,8 +714,10 @@ def main() -> int:
                                     wp = win_mod.get_position(sdl_win) or (0, 0)
                                     drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
                                 else:
-                                    # On Linux/macOS, keep a window-relative anchor point.
-                                    drag_offset = (mx, my)
+                                    # On Linux/macOS, anchor movement to the window position
+                                    # at drag start, then apply bounded accumulated rel deltas.
+                                    drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
+                                    drag_rel_accum = (0, 0)
                     if ev.button == 3:
                         items = feed_menu()
                         # Reflect current toggle state
@@ -728,6 +734,7 @@ def main() -> int:
                         context.open(items, ev.pos[0], ev.pos[1], surface.get_size())
                 elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
                     drag_mode = None
+                    drag_rel_accum = (0, 0)
                 elif ev.type == pygame.MOUSEMOTION:
                     if drag_mode:
                         if drag_mode == "move":
@@ -741,19 +748,30 @@ def main() -> int:
                                 # Discard synthetic motion events queued by SDL after move.
                                 pygame.event.clear(pygame.MOUSEMOTION)
                             else:
-                                # Linux/macOS path: move by per-event relative delta.
-                                wp = win_mod.get_position(sdl_win) or (0, 0)
+                                # Linux/macOS path: accumulate bounded rel movement and
+                                # apply from drag-start window position.
+                                rx = max(-40, min(40, int(ev.rel[0])))
+                                ry = max(-40, min(40, int(ev.rel[1])))
+                                drag_rel_accum = (
+                                    drag_rel_accum[0] + rx,
+                                    drag_rel_accum[1] + ry,
+                                )
                                 win_mod.set_position(sdl_win,
-                                                     wp[0] + int(ev.rel[0]),
-                                                     wp[1] + int(ev.rel[1]))
+                                                     drag_win_start[0] + drag_rel_accum[0],
+                                                     drag_win_start[1] + drag_rel_accum[1])
                         elif drag_mode == "resize":
                             if IS_WINDOWS:
                                 cx, cy = win_mod.get_screen_cursor()
                                 dx = cx - drag_screen_start[0]
                                 dy = cy - drag_screen_start[1]
                             else:
-                                dx = ev.pos[0] - drag_screen_start[0]
-                                dy = ev.pos[1] - drag_screen_start[1]
+                                rx = max(-40, min(40, int(ev.rel[0])))
+                                ry = max(-40, min(40, int(ev.rel[1])))
+                                drag_rel_accum = (
+                                    drag_rel_accum[0] + rx,
+                                    drag_rel_accum[1] + ry,
+                                )
+                                dx, dy = drag_rel_accum
                             pending_resize = (
                                 max(win_mod.MIN_W, min(win_mod.MAX_W, drag_orig[0] + dx)),
                                 max(win_mod.MIN_H, min(win_mod.MAX_H, drag_orig[1] + dy)),
@@ -773,7 +791,8 @@ def main() -> int:
                                 wp = win_mod.get_position(sdl_win) or (0, 0)
                                 drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
                             else:
-                                drag_offset = (mx2, my2)
+                                drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
+                                drag_rel_accum = (0, 0)
                 elif ev.type == pygame.WINDOWFOCUSGAINED:
                     pass
                 elif ev.type == pygame.WINDOWFOCUSLOST:
