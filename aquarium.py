@@ -17,6 +17,7 @@ import datetime
 import logging
 import math
 import os
+import platform
 import random
 import sys
 import time
@@ -65,6 +66,7 @@ LOCK_FILE = Path.home() / ".aquarium98.lock"
 
 SIM_HZ = 20
 RENDER_FPS = 30
+IS_WINDOWS = platform.system() == "Windows"
 
 
 def _setup_logging() -> None:
@@ -698,14 +700,18 @@ def main() -> int:
                             locked = bool(cfg.get("locked", False))
                             if not locked and win_mod.in_resize_handle(mx, my, *surface.get_size()):
                                 drag_mode = "resize"
-                                drag_screen_start = win_mod.get_screen_cursor()
+                                drag_screen_start = win_mod.get_screen_cursor() if IS_WINDOWS else (mx, my)
                                 drag_orig = surface.get_size()
                             elif not locked and win_mod.in_title_bar(mx, my, *surface.get_size()):
                                 drag_mode = "move"
-                                # Record where in the window the user clicked (screen space)
-                                sc = win_mod.get_screen_cursor()
-                                wp = win_mod.get_position(sdl_win) or (0, 0)
-                                drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
+                                if IS_WINDOWS:
+                                    # Record where in the window the user clicked (screen space)
+                                    sc = win_mod.get_screen_cursor()
+                                    wp = win_mod.get_position(sdl_win) or (0, 0)
+                                    drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
+                                else:
+                                    # On Linux/macOS, keep a window-relative anchor point.
+                                    drag_offset = (mx, my)
                     if ev.button == 3:
                         items = feed_menu()
                         # Reflect current toggle state
@@ -724,20 +730,30 @@ def main() -> int:
                     drag_mode = None
                 elif ev.type == pygame.MOUSEMOTION:
                     if drag_mode:
-                        # Use GetCursorPos (absolute screen coords) so window movement
-                        # never feeds back as a spurious ev.rel and causes jitter.
-                        cx, cy = win_mod.get_screen_cursor()
                         if drag_mode == "move":
-                            win_mod.set_position(sdl_win,
-                                                 cx - drag_offset[0],
-                                                 cy - drag_offset[1])
-                            # Discard any synthetic MOUSEMOTION events queued by SDL
-                            # after the window move — they carry stale window-relative
-                            # coordinates and would cause jitter on the next iteration.
-                            pygame.event.clear(pygame.MOUSEMOTION)
+                            if IS_WINDOWS:
+                                # Use GetCursorPos (absolute screen coords) so window movement
+                                # never feeds back as a spurious ev.rel and causes jitter.
+                                cx, cy = win_mod.get_screen_cursor()
+                                win_mod.set_position(sdl_win,
+                                                     cx - drag_offset[0],
+                                                     cy - drag_offset[1])
+                                # Discard synthetic motion events queued by SDL after move.
+                                pygame.event.clear(pygame.MOUSEMOTION)
+                            else:
+                                # Linux/macOS path: move by per-event relative delta.
+                                wp = win_mod.get_position(sdl_win) or (0, 0)
+                                win_mod.set_position(sdl_win,
+                                                     wp[0] + int(ev.rel[0]),
+                                                     wp[1] + int(ev.rel[1]))
                         elif drag_mode == "resize":
-                            dx = cx - drag_screen_start[0]
-                            dy = cy - drag_screen_start[1]
+                            if IS_WINDOWS:
+                                cx, cy = win_mod.get_screen_cursor()
+                                dx = cx - drag_screen_start[0]
+                                dy = cy - drag_screen_start[1]
+                            else:
+                                dx = ev.pos[0] - drag_screen_start[0]
+                                dy = ev.pos[1] - drag_screen_start[1]
                             pending_resize = (
                                 max(win_mod.MIN_W, min(win_mod.MAX_W, drag_orig[0] + dx)),
                                 max(win_mod.MIN_H, min(win_mod.MAX_H, drag_orig[1] + dy)),
@@ -752,9 +768,12 @@ def main() -> int:
                         locked = bool(cfg.get("locked", False))
                         if not locked and win_mod.in_title_bar(mx2, my2, *surface.get_size()):
                             drag_mode = "move"
-                            sc = win_mod.get_screen_cursor()
-                            wp = win_mod.get_position(sdl_win) or (0, 0)
-                            drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
+                            if IS_WINDOWS:
+                                sc = win_mod.get_screen_cursor()
+                                wp = win_mod.get_position(sdl_win) or (0, 0)
+                                drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
+                            else:
+                                drag_offset = (mx2, my2)
                 elif ev.type == pygame.WINDOWFOCUSGAINED:
                     pass
                 elif ev.type == pygame.WINDOWFOCUSLOST:
