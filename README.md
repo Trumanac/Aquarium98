@@ -41,6 +41,26 @@ Unzip and run — no Python installation required. Each release also includes a 
 
 First launch creates a local `.venv`, installs dependencies (~30s), and starts the app. Every launch after that is instant.
 
+### macOS (Unsigned Release) Quick Setup
+
+If macOS blocks launch because the app is unsigned, use this copy/paste setup in Terminal:
+
+```bash
+# 1) Change this path if you unzipped somewhere else
+cd /Applications/Aquarium98
+
+# 2) Ensure launchers are executable
+chmod +x run.command run.sh
+
+# 3) Remove Gatekeeper quarantine flags from the unzipped folder
+xattr -dr com.apple.quarantine .
+
+# 4) Launch
+./run.command
+```
+
+If `run.command` is blocked, open **System Settings → Privacy & Security** and click **Open Anyway**, then launch again.
+
 **Requirements (source only):**
 - Python **3.9** or newer
 - **Linux** system tray: `sudo apt install libappindicator3-1 gir1.2-appindicator3-0.1` (Ubuntu/Debian) or equivalent. App runs without it — just no tray icon.
