@@ -129,12 +129,12 @@ if sys.platform == "darwin":
     app = BUNDLE(  # noqa: F821
         coll,
         name="Aquarium98.app",
-        icon=str(ROOT / "assets" / "icon" / "icon.icns"),
+        icon=str(ROOT / "assets" / "icon" / "icon.icns") if (ROOT / "assets" / "icon" / "icon.icns").exists() else None,
         bundle_identifier="com.trumanac.aquarium98",
         info_plist={
             "CFBundleDisplayName":     "Aquarium 98",
-            "CFBundleShortVersionString": "1.0.0",
-            "CFBundleVersion":         "1.0.0",
+            "CFBundleShortVersionString": "1.0.4",
+            "CFBundleVersion":         "1.0.4",
             "NSHighResolutionCapable": True,
             "NSPrincipalClass":        "NSApplication",
             "NSAppleScriptEnabled":    False,

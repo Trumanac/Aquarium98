@@ -169,6 +169,22 @@ def ensure_icons() -> Path:
         icons[0].save(ico_path, format="ICO",
                       sizes=[i.size for i in icons], append_images=icons[1:])
 
+    icns_path = ICON_DIR / "icon.icns"
+    if not icns_path.exists() and sys.platform == "darwin":
+        import shutil
+        import subprocess
+        iconset = ICON_DIR / "icon.iconset"
+        iconset.mkdir(exist_ok=True)
+        base = Image.open(png_path)
+        for s in [16, 32, 128, 256, 512]:
+            base.resize((s, s), Image.LANCZOS).save(iconset / f"icon_{s}x{s}.png")
+            base.resize((s * 2, s * 2), Image.LANCZOS).save(iconset / f"icon_{s}x{s}@2x.png")
+        subprocess.run(
+            ["iconutil", "-c", "icns", str(iconset), "-o", str(icns_path)],
+            check=True,
+        )
+        shutil.rmtree(iconset)
+
     return png_path
 
 
