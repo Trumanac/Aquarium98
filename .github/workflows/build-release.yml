@@ -235,9 +235,9 @@ jobs:
 
           # Delete existing release for this tag so we start with a clean slate.
           # gh release view returns non-zero if no release exists, so this is safe.
-          if gh release view "$TAG" --json tagName > /dev/null 2>&1; then
+          if gh release view "$TAG" --repo "${REPO}" --json tagName > /dev/null 2>&1; then
             echo "Deleting existing release for $TAG"
-            gh release delete "$TAG" --yes
+            gh release delete "$TAG" --repo "${REPO}" --yes
           fi
 
           # Optional --prerelease flag for versions like 1.0.0-beta
@@ -245,6 +245,7 @@ jobs:
           [[ "$VERSION" == *-* ]] && PRERELEASE_FLAG="--prerelease"
 
           gh release create "$TAG" \
+            --repo "${REPO}" \
             --title "Aquarium 98 $VERSION" \
             --notes-file /tmp/release_notes.md \
             $PRERELEASE_FLAG \
