@@ -197,17 +197,17 @@ jobs:
         with:
           path: release-artifacts
 
-      - name: Create stable-named copies (for /releases/latest/download/ links)
+      - name: Rename artifacts to stable names (for /releases/latest/download/ links)
         run: |
-          # These fixed filenames are what the README download links point to.
-          # GitHub's /releases/latest/download/FILENAME redirect requires an
-          # exact filename match — version numbers break it.
+          # Rename versioned files to fixed filenames so the README download
+          # links work. Using mv (not cp) means only ONE file per platform
+          # exists — no duplicate versioned + unversioned assets in the release.
           find release-artifacts/windows-installer -name "*.exe" | sort | tail -1 \
-            | xargs -I{} cp {} release-artifacts/windows-installer/Aquarium98-Setup.exe
+            | xargs -I{} mv {} release-artifacts/windows-installer/Aquarium98-Setup.exe
           find release-artifacts/linux-appimage -name "*.AppImage" | sort | tail -1 \
-            | xargs -I{} cp {} release-artifacts/linux-appimage/Aquarium98-x86_64.AppImage
+            | xargs -I{} mv {} release-artifacts/linux-appimage/Aquarium98-x86_64.AppImage
           find release-artifacts/macos-dmg -name "*.dmg" | sort | tail -1 \
-            | xargs -I{} cp {} release-artifacts/macos-dmg/Aquarium98.dmg
+            | xargs -I{} mv {} release-artifacts/macos-dmg/Aquarium98.dmg
 
       - name: Generate SHA256 checksums
         run: |
