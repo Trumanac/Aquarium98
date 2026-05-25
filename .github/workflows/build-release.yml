@@ -187,6 +187,11 @@ jobs:
     permissions:
       contents: write   # required to create releases and upload assets
     steps:
+      - name: Delete existing release for this tag (clean slate)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "${{ github.ref_name }}" --yes 2>/dev/null || true
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
