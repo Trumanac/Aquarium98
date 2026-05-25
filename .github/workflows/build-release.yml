@@ -215,7 +215,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "Aquarium 98 ${{ env.VERSION }}"
-          draft: true        # review before publishing
+          draft: false
           prerelease: ${{ contains(env.VERSION, '-') }}
           generate_release_notes: true
           body: |
