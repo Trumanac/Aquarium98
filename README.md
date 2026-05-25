@@ -4,34 +4,74 @@
   <img src="assets/icon/SplashScreen.png" alt="Aquarium 98" width="700">
 </p>
 
-[![CI](https://github.com/trumanac/Aquarium98/actions/workflows/ci.yml/badge.svg)](https://github.com/trumanac/Aquarium98/actions/workflows/ci.yml)
-[![License: Personal Use](https://img.shields.io/badge/License-Personal%20Use-blue.svg)](LICENSE)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#quick-start-from-source)
+[![Latest Release](https://img.shields.io/github/v/release/trumanac/Aquarium98?label=latest&color=brightgreen&style=flat-square)](https://github.com/trumanac/Aquarium98/releases/latest)
+[![Total Downloads](https://img.shields.io/github/downloads/trumanac/Aquarium98/total?color=blue&style=flat-square)](https://github.com/trumanac/Aquarium98/releases)
+[![itch.io](https://img.shields.io/badge/itch.io-superbirdy-fa5c5c.svg?style=flat-square&logo=itch.io&logoColor=white)](https://superbirdy.itch.io)
+[![License: Personal Use](https://img.shields.io/badge/License-Personal%20Use-blue.svg?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square)](#download)
 
 A retro Windows 98-styled desktop aquarium widget — a living, breathing fish tank that lives on your desktop. Cross-platform Python app built with pygame-ce, targeting **≤1% CPU** as a true always-on background companion.
 
 ## Screenshots
 
-| Day scene | Night scene |
-|:---------:|:-----------:|
-| ![Day scene](docs/screenshot.png) | ![Night scene](docs/screenshot2.png) |
+| Day scene | Night mode |
+|:---------:|:----------:|
+| ![Active tank](screenshots/01_active_tank.png) | ![Night mode](screenshots/02_night_mode.png) |
 
 | Right-click menu | Settings dialog |
 |:----------------:|:---------------:|
-| ![Right-click menu](docs/screenshot_menu.png) | ![Settings dialog](docs/screenshot_settings.png) |
+| ![Right-click menu](screenshots/03_context_menu.png) | ![Settings dialog](screenshots/04_settings.png) |
 
 ## Download
 
-The latest release is available on the [Releases page](../../releases/latest).
+> No Python required. Grab the file for your OS and run it.
 
-| Platform | Download |
-|----------|----------|
-| Windows  | `Aquarium98-vX.X.X.zip` |
-| macOS    | `Aquarium98-vX.X.X.zip` |
-| Linux    | `Aquarium98-vX.X.X.zip` |
+| Platform | One-click download | Notes |
+|----------|--------------------|-------|
+| **Windows 10 / 11** (64-bit) | [⬇ Aquarium98-Setup.exe](https://github.com/trumanac/Aquarium98/releases/latest/download/Aquarium98-Setup.exe) | Installer — no admin required |
+| **macOS** 10.15 Catalina+ | [⬇ Aquarium98.dmg](https://github.com/trumanac/Aquarium98/releases/latest/download/Aquarium98.dmg) | Open DMG, drag to Applications |
+| **Linux** (x86\_64) | [⬇ Aquarium98-x86\_64.AppImage](https://github.com/trumanac/Aquarium98/releases/latest/download/Aquarium98-x86_64.AppImage) | Portable — no install needed |
 
-Unzip and run — no Python installation required. Each release also includes a `.sha256` checksum file so you can verify your download.
+SHA256 checksums for every file are on the [Releases page](https://github.com/trumanac/Aquarium98/releases/latest).
+
+<details>
+<summary><b>Windows</b> — SmartScreen warning on first run</summary>
+
+Windows may show *"Windows protected your PC"* the first time you run the installer.
+Click **More info → Run anyway**. This is expected for apps without a paid code-signing
+certificate. The app is safe.
+
+</details>
+
+<details>
+<summary><b>macOS</b> — Gatekeeper &amp; "app is damaged" message</summary>
+
+macOS blocks apps from unidentified developers by default. On first launch, choose one:
+
+- Right-click the `.app` → **Open** → **Open** (one-time prompt)
+- Or run in Terminal:
+  ```bash
+  xattr -dr com.apple.quarantine /Applications/Aquarium98.app
+  ```
+
+</details>
+
+<details>
+<summary><b>Linux</b> — mark executable + optional system tray</summary>
+
+```bash
+chmod +x Aquarium98-x86_64.AppImage
+./Aquarium98-x86_64.AppImage
+```
+
+For system-tray support on Ubuntu / Debian:
+```bash
+sudo apt install libayatana-appindicator3-1
+```
+
+The app runs without the tray library — you just won't get the tray icon.
+
+</details>
 
 ## Quick Start (from source)
 
@@ -68,14 +108,14 @@ If `run.command` is blocked, open **System Settings → Privacy & Security** and
 ## Features
 
 ### 35 Unique Species
-Your tank can hold up to 18 fish drawn from a roster of 35 species across four rarity tiers:
+Your tank can hold up to 18 fish (Peaceful mode; scales down to 10 on Nightmare) from a roster of 35 species across four rarity tiers:
 
 | Rarity | Count | Examples |
 |--------|-------|---------|
-| Common | 16 | Clownfish, Neon Tetra, Guppy, Angelfish, Betta, Puffer … |
-| Uncommon | 10 | Kuhli Loach, Honey Gourami, Amano Shrimp, African Dwarf Frog … |
-| Rare | 9 | Dragon Goby, Hermit Crab, Moonveil Dart, Prism Dancer … |
-| Super Rare | 1 | Pearl Rasbora |
+| Common | 16 | Clownfish, Neon Tetra, Guppy, Algae Eater, Cardinal, Zebra Danio … |
+| Uncommon | 10 | Angelfish, Kuhli Loach, Honey Gourami, Hermit Crab, Puffer … |
+| Rare | 8 | Dragon Goby, Moonveil Dart, Prism Dancer, Golden Specter … |
+| Epic | 1 | Moonshell Hermit |
 
 Fish breed naturally, age, and eventually pass on. Bottom-dwellers crawl the sand, algae eaters cling to the glass, and schooling fish flock together.
 
@@ -92,9 +132,9 @@ A chest on the tank floor opens periodically — click it to collect coins and t
 - **Fish Roster** — live table of every fish in the tank with health, hunger, and mood
 - **Fish Profile** — click any fish for a detailed popup with stats and fun facts
 - **Event Log** — timestamped history of everything that happens in the tank
-- **Achievements** — 20+ milestones rewarding exploration and longevity
+- **Achievements** — 25 milestones rewarding exploration and longevity
 - **Graveyard** — memorial log of every fish that has died
-- **Settings** — sliders and checkboxes for opacity, fish counts, time scale, hunger/breed/algae rates, background style (4 options), plant style (3 options), castle/decor style (7 options), and more
+- **Settings** — sliders and checkboxes for opacity, fish counts, time scale, hunger/breed/algae rates, background style (4 options), plant style (3 options), castle/decor style (5 options), and more
 
 ### Custom Animated Cursors
 - Diving glove cursor by default
@@ -102,11 +142,20 @@ A chest on the tank floor opens periodically — click it to collect coins and t
 - Cleaning sponge cursor in Clean mode
 - Each cursor has a 5-frame click animation
 
+### Audio
+- Bubble pops (3 randomised variants), treasure-chest coin sound, single-coin reward sound
+- Sparse ambient water splashes on a long random timer (15–60 minutes)
+- All audio can be muted from the right-click menu or Settings
+
+### Version Check & Crash Reporting
+- Silent background check against GitHub Releases on startup; status bar shows a banner when an update is available
+- On any fatal exception a Win98-style crash dialog shows the traceback and log file path
+
 ### Win98 Aesthetic
 Authentic Windows 98 chrome, beveled panels, gradient title bars, scan-line overlay, and a system tray icon. Resize and reposition the window freely; lock it in place when you're happy. A splash screen greets you on every launch.
 
 ### Randomised Decor
-Every new tank or reset picks a fresh castle/decor from 7 options (four castle variants, a pirate ship, and more). You can always override the choice in Settings.
+Your first-ever tank and any full reset pick a fresh castle/decor from 5 options (castle variants, a pirate ship, and more). Your choice is saved between sessions and can be changed anytime in Settings.
 
 ## Controls
 
@@ -138,6 +187,8 @@ Every new tank or reset picks a fresh castle/decor from 7 options (four castle v
 | Always on Top | Keep the tank above all other windows |
 | Pause When Hidden | Stop simulation when minimised |
 | Show Fish Names | Display each fish's name above them |
+| Show Fish Moods | Show a colour-coded mood dot above each fish |
+| Mute Sounds | Toggle all sound effects on/off |
 | Opacity | Set window transparency (100% – 30%) |
 | About Aquarium 98 | Version and credits |
 | Settings | Full settings panel |
@@ -146,21 +197,38 @@ Every new tank or reset picks a fresh castle/decor from 7 options (four castle v
 
 ## Building a Release
 
-```
-python build.py --version 1.0.0
-```
-Outputs `dist/Aquarium98-v1.0.0.zip` and `dist/Aquarium98-v1.0.0.zip.sha256`.
+Builds run automatically on GitHub Actions when you push a version tag.
+Each platform (Windows, macOS, Linux) builds in parallel and the results are
+published as a draft GitHub Release for you to review before going live.
 
-To publish a GitHub Release automatically:
-1. Push your changes.
-2. Go to **Actions → Build & Release → Run workflow**.
-3. Enter the version number (e.g. `1.2.0`) and click **Run workflow**.
+```bash
+# Bump the version in installer/aquarium98.iss, then:
+git tag v1.2.0
+git push origin v1.2.0
+```
 
-The workflow smoke-tests on Windows, macOS, and Linux before publishing.
+The workflow builds:
+- `Aquarium98-Setup.exe` — Windows installer (via Inno Setup)
+- `Aquarium98.dmg` — macOS disk image (ad-hoc signed)
+- `Aquarium98-x86_64.AppImage` — Linux portable app
+
+To trigger a build without tagging, go to
+**Actions → Build & Release → Run workflow** and enter a version number.
+
+**Local build** (requires the target OS + `pip install pyinstaller`):
+```bash
+pyinstaller aquarium98.spec
+# Windows: iscc installer\aquarium98.iss
+# macOS:   installer/create_dmg.sh 1.2.0
+# Linux:   installer/build_appimage.sh 1.2.0
+```
+
+See [PACKAGING.md](PACKAGING.md) for the full build and code-signing guide.
 
 ## Credits
 
 Created by **[trumanac](https://github.com/trumanac)**.
+Also on itch.io: **[superbirdy.itch.io](https://superbirdy.itch.io)**.
 
 ## License
 

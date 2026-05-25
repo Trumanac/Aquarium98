@@ -3,7 +3,7 @@ environment.py — bubbles, food flakes, algae growth, day/night cycle.
 
 Follows FishPOC.lua (active Rainmeter path):
   - 6 fixed bubble objects, never added/removed; reset on reaching surface.
-  - 8 fixed food slots (3 back + 3 mid + 2 front), layer-fixed.
+  - 30 fixed food slots (10 back + 10 mid + 10 front), layer-fixed.
   - Algae 0–100 percentage scale; density-based growth; 8% removed per scrub.
   - Day/night: 20-minute full cycle (modular path feature).
 
@@ -73,7 +73,7 @@ def _reset_bubble(b: Bubble, tank_w: int, tank_h: int) -> None:
 # Food pool  (15 fixed slots: 5 back + 5 mid + 5 front)
 # ---------------------------------------------------------------------------
 
-_FOOD_LAYERS = [3]*5 + [2]*5 + [1]*5  # 15 total slots
+_FOOD_LAYERS = [3]*10 + [2]*10 + [1]*10  # 30 total slots
 
 
 @dataclass
@@ -136,7 +136,7 @@ def make_environment(tank_w: int, tank_h: int) -> Environment:
         b.y = random.uniform(tank_h * 0.05, tank_h * 0.90)  # stagger initial heights
         env.bubbles.append(b)
 
-    # 8 fixed food slots
+    # 30 fixed food slots (10 back + 10 mid + 10 front)
     for layer in _FOOD_LAYERS:
         env.food.append(Food(active=False, layer=layer))
 
@@ -282,11 +282,12 @@ def update_environment(env: Environment, dt: float, cfg: dict,
     env.algae = min(100.0, env.algae + dt * (0.0003 * effective_rate + density * 0.002 * effective_rate))
 
     # ---- Day/night cycle (20-minute full cycle at time_scale=1.0) ----
+    # day_time advances the in-game clock.  night_factor is overridden each
+    # render frame by the wall-clock path in aquarium.py, so only day_time
+    # needs updating here.
     if cfg.get("night_cycle", True):
         period = 20.0 * 60.0 / max(0.1, float(cfg.get("time_scale", 1.0)))
         env.day_time = (env.day_time + dt / period) % 1.0
-        # night_factor peaks at day_time=0.5 (midnight); 0 at 0.0 (dawn)
-        env.night_factor = (1.0 - math.cos(env.day_time * math.tau)) * 0.5
     else:
         env.day_time = 0.0
         env.night_factor = 0.0

@@ -6,10 +6,14 @@ Builds a 256x256 PNG depicting a tiny Win98 window framing a mini aquarium
 (Windows) and .icns (macOS) files.
 
 Only runs if the icon files don't already exist (cached on disk).
+In a frozen (PyInstaller) build the icons are pre-bundled into the assets
+directory and generation is skipped entirely to avoid writing to the
+read-only extraction directory.
 """
 from __future__ import annotations
 
 import struct
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -144,9 +148,15 @@ def _make_256() -> Image.Image:
 
 
 def ensure_icons() -> Path:
-    ICON_DIR.mkdir(parents=True, exist_ok=True)
     png_path = ICON_DIR / "icon.png"
     ico_path = ICON_DIR / "icon.ico"
+
+    # In a frozen (PyInstaller) bundle the assets dir is read-only.  Icons are
+    # pre-generated at build time and packed into the bundle, so skip all writes.
+    if getattr(sys, "frozen", False):
+        return png_path
+
+    ICON_DIR.mkdir(parents=True, exist_ok=True)
 
     if not png_path.exists():
         img = _make_256()

@@ -1,7 +1,7 @@
 """
 achievements_panel.py — Win98-style achievements checklist panel.
 
-15 achievements stored in cfg["achievements_unlocked"] as a list of string IDs.
+25 achievements stored in cfg["achievements_unlocked"] as a list of string IDs.
 Locked achievements display as "???" until unlocked.
 Toggle with 'achievements' action.
 """
@@ -15,7 +15,7 @@ WIN_LIGHT = (255, 255, 255)
 WIN_DARK  = (64,  64,  64)
 TITLE_A   = (0,   0,   128)
 TITLE_B   = (16, 132, 208)
-PANEL_BG  = (240, 240, 240)
+PANEL_BG  = (192, 192, 192)
 COL_CHECK = (30, 160, 30)
 COL_LOCK  = (140, 140, 140)
 
@@ -29,7 +29,7 @@ PW    = 270
 ACHIEVEMENTS: list[dict] = [
     {"id": "first_steps",     "name": "First Steps",       "desc": "Open the aquarium for the first time."},
     {"id": "rare_encounter",  "name": "Rare Encounter",    "desc": "Witness your first rare fish."},
-    {"id": "super_rare",      "name": "Super Rare!",       "desc": "A super-rare fish graced your tank."},
+    {"id": "super_rare",      "name": "Epic Find!",         "desc": "An epic fish graced your tank."},
     {"id": "named_them_all",  "name": "Named Them All",    "desc": "Give every living fish a custom name."},
     {"id": "streak_7",        "name": "7-Day Streak",      "desc": "Open the aquarium 7 days in a row."},
     {"id": "streak_30",       "name": "30-Day Streak",     "desc": "Keep a 30-day opening streak."},
@@ -43,6 +43,16 @@ ACHIEVEMENTS: list[dict] = [
     {"id": "collector",       "name": "The Collector",     "desc": "Have 5+ different species simultaneously."},
     {"id": "old_friend",      "name": "Old Friend",        "desc": "Keep the same fish alive for 7 days."},
     {"id": "nightmare_survivor", "name": "Nightmare Survivor", "desc": "Maintain a living tank on Nightmare difficulty for 7 in-game days."},
+    # --- extended set ---
+    {"id": "coin_hoarder",   "name": "Coin Hoarder",   "desc": "Accumulate 500 coins at once."},
+    {"id": "bubble_popper",  "name": "Bubble Popper",  "desc": "Pop 25 bubbles in total."},
+    {"id": "the_undertaker", "name": "The Undertaker", "desc": "Have 5 fish rest in the graveyard."},
+    {"id": "shopaholic",     "name": "Shopaholic",     "desc": "Buy 5 fish from the Fish Shoppe."},
+    {"id": "naturalist",     "name": "Naturalist",     "desc": "Discover 8 different species."},
+    {"id": "prolific",       "name": "Prolific",       "desc": "Breed 25 fish in total."},
+    {"id": "early_bird",     "name": "Early Bird",     "desc": "Open the aquarium before 7 AM."},
+    {"id": "overcrowded",    "name": "Overcrowded!",   "desc": "Have 10 or more fish in the tank at once."},
+    {"id": "long_haul",      "name": "Long Haul",      "desc": "Keep a fish alive for 14 days."},
 ]
 
 
@@ -146,6 +156,44 @@ def check_achievements(cfg: dict, fish_list: list) -> list[str]:
     if int(cfg.get("difficulty", 2)) == 5:
         if float(cfg.get("stat_nightmare_days", 0.0)) >= 7.0:
             _try("nightmare_survivor")
+
+    # Coin Hoarder — 500 coins on hand
+    if int(cfg.get("coins", 0)) >= 500:
+        _try("coin_hoarder")
+
+    # Bubble Popper — 25 bubbles popped
+    if int(cfg.get("stat_bubbles_popped", 0)) >= 25:
+        _try("bubble_popper")
+
+    # The Undertaker — 5 fish in the graveyard
+    if len(cfg.get("graveyard") or []) >= 5:
+        _try("the_undertaker")
+
+    # Shopaholic — bought 5 fish from the shoppe
+    if int(cfg.get("stat_shoppe_buys", 0)) >= 5:
+        _try("shopaholic")
+
+    # Naturalist — discovered 8 different species
+    if len(cfg.get("seen_species") or []) >= 8:
+        _try("naturalist")
+
+    # Prolific — bred 25 fish total
+    if int(cfg.get("stat_bred_fish", 0)) >= 25:
+        _try("prolific")
+
+    # Early Bird — open before 7 AM
+    if now.hour < 7:
+        _try("early_bird")
+
+    # Overcrowded — 10+ fish at once
+    if len(fish_list) >= 10:
+        _try("overcrowded")
+
+    # Long Haul — any fish 14+ days
+    for f in fish_list:
+        if getattr(f, "age", 0) >= 14 * 86400:
+            _try("long_haul")
+            break
 
     return newly
 

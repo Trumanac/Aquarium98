@@ -378,6 +378,26 @@ NAMES = [
     "Ripple", "Drift", "Flash", "Glimmer", "Sparky", "Comet", "Zephyr", "Nova",
     "Pudding", "Biscuit", "Brine", "Salty", "Kelp", "Anchor", "Barnacle", "Phin",
     "Sundrop", "Moonbeam", "Starfish", "Riptide", "Shelly", "Sandy", "Misty",
+    # Extended pool — gems & minerals
+    "Topaz", "Onyx", "Garnet", "Opal", "Amber", "Crystal", "Cobalt", "Flint",
+    # Space & cosmic
+    "Cosmos", "Nebula", "Orbit", "Pulsar", "Astro", "Solaris", "Quasar", "Vega",
+    # Nature
+    "Willow", "Cedar", "Fern", "Moss", "Ivy", "Sage", "Basil", "Clover",
+    # Spice rack
+    "Cinnamon", "Clove", "Paprika", "Nutmeg", "Thyme",
+    # Colours
+    "Crimson", "Indigo", "Azure", "Cerulean", "Scarlet", "Saffron", "Teal",
+    # Cute & wiggly
+    "Sprinkles", "Noodle", "Bloop", "Flopper", "Skipper", "Wobble", "Doodle",
+    "Fizzy", "Squiggle", "Blip", "Jelly", "Wriggle",
+    # Nautical
+    "Buoy", "Mast", "Siren", "Keel", "Rudder",
+    # Ocean moods
+    "Surge", "Cascade", "Eddy", "Crest", "Briny", "Tidal", "Swell",
+    # Misc fun
+    "Whimsy", "Dazzle", "Twinkle", "Swirl", "Shimmer", "Glisten", "Glitch",
+    "Prancer", "Scooter", "Biscotti", "Tofu", "Dumpling", "Ramen",
 ]
 
 # Names specific to rare species — slightly more dramatic/mysterious.

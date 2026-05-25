@@ -64,10 +64,12 @@ class SettingsDialog:
         self.cfg_edit: dict = {}
         self._dragging: _Slider | None = None
         self._diff_desc_y: int = 0   # y position for difficulty description line
+        self.update_info: dict = {}   # populated by aquarium.py from update_check.get_result()
         self.sliders: list[_Slider] = [
             _Slider("opacity",       "Window Opacity",  0.30, 1.00, 0.05),
+            _Slider("sound_volume",  "Sound Volume",    0.00, 1.00, 0.05),
             _Slider("max_bubbles",   "Max Bubbles",     1,    30,   1,   integer=True),
-            _Slider("castle_choice", "Castle Style",    1,    7,    1,   integer=True),
+            _Slider("castle_choice", "Castle Style",    1,    5,    1,   integer=True),
             _Slider("bg_choice",     "Background",      1,    4,    1,   integer=True),
             _Slider("plant_choice",  "Plant Style",     1,    3,    1,   integer=True),
             _Slider("difficulty",    "Difficulty",      1,    5,    1,   integer=True),
@@ -78,6 +80,7 @@ class SettingsDialog:
             _Check("pause_when_hidden","Pause When Hidden"),
             _Check("scan_lines",       "Retro Scan Lines"),
             _Check("show_names",       "Show Fish Names"),
+            _Check("sound_muted",      "Mute Sounds"),
             _Check("open_on_startup",  "Open on Startup"),
             _Check("performance_mode", "Performance Mode"),
         ]
@@ -301,6 +304,23 @@ class SettingsDialog:
             screen.blit(lbl_s, (check_col_x, sy))
             screen.blit(val_s, (check_col_x + lbl_s.get_width() + 4, sy))
             sy += lbl_s.get_height() + 3
+
+        # Version / update status line
+        ui = self.update_info
+        if ui.get("newer"):
+            ver_text = f"v{ui.get('latest', '?')} available \u2014 see GitHub"
+            ver_col  = (160, 0, 0)
+        elif "newer" in ui:
+            ver_text = "App is up to date"
+            ver_col  = (0, 120, 0)
+        else:
+            ver_text = "Checking for updates..."
+            ver_col  = (80, 80, 80)
+        ver_s   = self.font.render(ver_text, True, ver_col)
+        avail_w = p.right - 14 - check_col_x
+        screen.blit(ver_s, (check_col_x, sy),
+                    area=(0, 0, min(ver_s.get_width(), avail_w), ver_s.get_height()))
+        sy += ver_s.get_height() + 3
 
         # Buttons
         for b in self.buttons:

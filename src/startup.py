@@ -34,9 +34,36 @@ _ROOT      = Path(__file__).resolve().parent.parent
 _APP_NAME  = "Aquarium98"
 _BUNDLE_ID = "com.trumanac.aquarium98"
 
-# Platform-specific launchers (all live next to aquarium.py)
+# Platform-specific launchers (dev / source-run only)
 _WIN_LAUNCHER   = _ROOT / "run.bat"
 _POSIX_LAUNCHER = _ROOT / "run.sh"
+
+
+def _exe_cmd() -> str:
+    """Return the shell command for the auto-start entry.
+
+    Frozen (PyInstaller) build: point straight at the executable so the
+    installed .exe / AppImage is what launches, not a dev helper script.
+    Dev mode: use the platform shell launcher next to aquarium.py.
+    """
+    if getattr(sys, "frozen", False):
+        return f'"{sys.executable}"'
+    if sys.platform == "win32":
+        return f'"{_WIN_LAUNCHER}"'
+    return f'"{_POSIX_LAUNCHER}"'
+
+
+def _icon_path() -> str:
+    """Return the icon PNG path for .desktop / plist entries.
+
+    In a frozen onedir bundle the icon lives next to the executable.
+    In dev mode it lives under assets/icon/.
+    """
+    if getattr(sys, "frozen", False):
+        candidate = Path(sys.executable).parent / "assets" / "icon" / "icon.png"
+        if candidate.exists():
+            return str(candidate)
+    return str(_ROOT / "assets" / "icon" / "icon.png")
 
 # Windows registry
 _REG_KEY  = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -64,7 +91,7 @@ def _win_set(enabled: bool) -> bool:
             winreg.HKEY_CURRENT_USER, _REG_KEY, 0, winreg.KEY_SET_VALUE
         )
         if enabled:
-            cmd = f'"{_WIN_LAUNCHER}"'
+            cmd = _exe_cmd()
             winreg.SetValueEx(key, _REG_NAME, 0, winreg.REG_SZ, cmd)
             log.info("startup: registered '%s' → %s", _REG_NAME, cmd)
         else:
@@ -131,13 +158,20 @@ def _macos_set(enabled: bool) -> bool:
     try:
         if enabled:
             _MACOS_PLIST_DIR.mkdir(parents=True, exist_ok=True)
+            frozen = getattr(sys, "frozen", False)
             plist_content = _MACOS_PLIST_TEMPLATE.format(
                 bundle_id=_BUNDLE_ID,
                 launcher=str(_POSIX_LAUNCHER),
             )
+            if frozen:
+                # Frozen .app: call the exe directly (no shell wrapper needed)
+                plist_content = plist_content.replace(
+                    f"<string>/bin/bash</string>\n        <string>{_POSIX_LAUNCHER}</string>",
+                    f"<string>{sys.executable}</string>",
+                )
+            else:
+                _POSIX_LAUNCHER.chmod(0o755)
             _MACOS_PLIST_PATH.write_text(plist_content, encoding="utf-8")
-            # Make the launcher executable
-            _POSIX_LAUNCHER.chmod(0o755)
             # Register with launchctl (best-effort — may fail if not on a session)
             subprocess.run(
                 ["launchctl", "load", str(_MACOS_PLIST_PATH)],
@@ -171,7 +205,7 @@ _LINUX_DESKTOP_TEMPLATE = """\
 Type=Application
 Name={app_name}
 Comment=Your living Windows 98 desktop fish tank
-Exec=/bin/bash {launcher}
+Exec={exec_cmd}
 Icon={icon}
 Terminal=false
 StartupNotify=false
@@ -183,15 +217,18 @@ def _linux_set(enabled: bool) -> bool:
     try:
         if enabled:
             _XDG_AUTOSTART_DIR.mkdir(parents=True, exist_ok=True)
-            icon_path = str(_ROOT / "assets" / "icon" / "icon.png")
+            frozen = getattr(sys, "frozen", False)
+            if frozen:
+                exec_cmd = sys.executable
+            else:
+                exec_cmd = f"/bin/bash {_POSIX_LAUNCHER}"
+                _POSIX_LAUNCHER.chmod(0o755)
             desktop_content = _LINUX_DESKTOP_TEMPLATE.format(
                 app_name=_APP_NAME,
-                launcher=str(_POSIX_LAUNCHER),
-                icon=icon_path,
+                exec_cmd=exec_cmd,
+                icon=_icon_path(),
             )
             _LINUX_DESKTOP_PATH.write_text(desktop_content, encoding="utf-8")
-            # Make the launcher executable
-            _POSIX_LAUNCHER.chmod(0o755)
             log.info("startup: Linux autostart entry written → %s", _LINUX_DESKTOP_PATH)
         else:
             _LINUX_DESKTOP_PATH.unlink(missing_ok=True)

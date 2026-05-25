@@ -17,9 +17,7 @@ from dataclasses import dataclass
 # Per-achievement coin bonuses (awarded once on first unlock)
 # ---------------------------------------------------------------------------
 ACHIEVEMENT_COIN_REWARDS: dict[str, int] = {
-    "first_fish":     5,
-    "fish_fan":       10,
-    "fish_hoarder":   20,
+    "first_steps":    5,
     "name_changer":   5,
     "named_them_all": 25,
     "old_friend":     15,
@@ -30,8 +28,20 @@ ACHIEVEMENT_COIN_REWARDS: dict[str, int] = {
     "clean_freak":    10,
     "fish_whisperer": 20,
     "night_watcher":  10,
-    "diner":          10,
-    "breeder":        25,
+    "master_breeder": 25,
+    "tank_full":      15,
+    "streak_7":       10,
+    "streak_30":      50,
+    "nightmare_survivor": 100,
+    "coin_hoarder":        15,
+    "bubble_popper":       10,
+    "the_undertaker":      15,
+    "shopaholic":          20,
+    "naturalist":          20,
+    "prolific":            35,
+    "early_bird":          10,
+    "overcrowded":         20,
+    "long_haul":           25,
 }
 
 
@@ -84,7 +94,14 @@ def fish_sell_price(f) -> int:
     """Calculate fair sell price for *f* based on its current state."""
     sp = f.sp
     # Base by rarity — set well below buy price to create a buy/sell spread
-    base = 40.0 if sp.get("uncommon") else 15.0
+    if sp.get("super_rare"):
+        base = 120.0
+    elif sp.get("rare"):
+        base = 80.0
+    elif sp.get("uncommon"):
+        base = 40.0
+    else:
+        base = 15.0
 
     # Mood multiplier
     mood_mult = {

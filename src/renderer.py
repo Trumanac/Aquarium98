@@ -215,12 +215,10 @@ class SpriteAssets:
             _load(EF / "algae_overlay4.png"),
         ]
 
-        # All 7 castle/decor skins (0=castle_new, 1=castle_new2, …, 4=Castle2, 5=Ship, 6=Castle3)
+        # 5 castle/decor skins (choice 1-5: castle_new, castle_new3, Castle2, Ship, Castle3)
         self.castles: list[pygame.Surface | None] = [
             _load(SPRITES / "decor" / "castle_new.png"),
-            _load(SPRITES / "decor" / "castle_new2.png"),
             _load(SPRITES / "decor" / "castle_new3.png"),
-            _load(SPRITES / "decor" / "castle_new4.png"),
             _load(SPRITES / "decor" / "Castle2.png"),
             _load(SPRITES / "decor" / "Ship.png"),
             _load(SPRITES / "decor" / "Castle3.png"),
@@ -336,7 +334,7 @@ class SpriteAssets:
         # Treasure chest spritesheet (3×3 grid = 9 frames)
         self.chest_sheet: pygame.Surface | None = _load(
             SPRITES / "decor" / "TreasureChest.png")
-        # GoldCoin.png is a wide spritesheet — draw the icon programmatically instead
+        # GoldCoin.png (assets/sprites/ui/) is a wide spritesheet — draw the icon programmatically instead
 
 
 # ---------------------------------------------------------------------------
@@ -525,15 +523,25 @@ class Renderer:
 
         # Light shaft animation
         self._sim_t = 0.0
-        self._shaft_frames  = [p[8] and 1 or 1 for p in _SHAFT_PARAMS]  # starting at 1
-        self._shaft_frames  = [1, 2, 3]   # initial frame indices
+        self._shaft_frames  = [1, 2, 3]   # staggered initial frame indices
         self._shaft_accums  = [0.0, 0.0, 0.0]
 
         # Mode state (set by aquarium.py)
-        self.food_mode   = False
-        self.clean_mode  = False
-        self.roster_mode = False
-        self.store_mode  = False  # Fish Shoppe panel open
+        self.food_mode         = False
+        self.clean_mode        = False
+        self.roster_mode       = False
+        self.store_mode        = False  # Fish Shoppe panel open
+        self.event_log_mode    = False
+        self.achievements_mode = False
+        self.encyclopedia_mode = False
+        self.graveyard_mode    = False
+
+        # Bubble sprite cache: (sprite_idx, size) → scaled Surface
+        # Avoids smoothscale on every bubble every frame.
+        self._bubble_sprite_cache: dict[tuple[int, int], pygame.Surface] = {}
+        # Pre-tinted animation frames (built in _rebuild_decor, avoids per-frame copy+fill)
+        self._surface_ripples_tinted: list[pygame.Surface] = []
+        self._caustics_tinted:        list[pygame.Surface] = []
         # Algae overlay: random index 0-3, re-rolled each time tank is cleaned
         self._algae_idx  = random.randint(0, 3)
         # Castle skin: 1-4, synced from cfg each frame
@@ -623,7 +631,7 @@ class Renderer:
                 self.assets.bg_coral_r, (w, h))
 
         if self.assets.castles:
-            cidx = max(0, min(6, self.castle_choice - 1))
+            cidx = max(0, min(4, self.castle_choice - 1))
             castle_tex = self.assets.castles[cidx]
             if castle_tex:
                 cw = max(8, int(CASTLE_W * rx))
@@ -641,12 +649,22 @@ class Renderer:
             pygame.transform.smoothscale(f, (w, sr_h))
             for f in self.assets.surface_ripples
         ]
+        self._surface_ripples_tinted = []
+        for _f in self._surface_ripples_scaled:
+            _t = _f.copy()
+            _t.fill((56, 62, 72), special_flags=pygame.BLEND_MULT)
+            self._surface_ripples_tinted.append(_t)
 
         cf_h = max(1, int(CAUSTICS_FLOOR_H * h / _REF_H))
         self._caustics_scaled = [
             pygame.transform.smoothscale(f, (w, cf_h))
             for f in self.assets.caustics
         ]
+        self._caustics_tinted = []
+        for _f in self._caustics_scaled:
+            _t = _f.copy()
+            _t.fill((110, 100, 72), special_flags=pygame.BLEND_MULT)
+            self._caustics_tinted.append(_t)
 
         if self.assets.plant_frames or self.assets.plant2_frames or self.assets.plant3_frames:
             pidx = max(1, min(3, self.plant_choice))
@@ -760,6 +778,8 @@ class Renderer:
     def draw(self, fish_list: list, env, *,
              paused: bool, locked: bool, active: bool,
              show_names: bool, scan_lines: bool,
+             show_moods: bool = False,
+             encyclopedia_seen: int = 0,
              stats: dict, sprite_cache: dict,
              status_msg: str = "",
              chest=None,
@@ -798,11 +818,9 @@ class Renderer:
         s.blit(self._static_bg, tr.topleft)
 
         # ---- Z-3: WaterSurface (additive shimmer, top strip) ----
-        if self._surface_ripples_scaled:
-            sr_s = self._surface_ripples_scaled[self._surface_frame].copy()
-            # Scale to ~28 % with cool-blue tint, then add brightness.
-            sr_s.fill((56, 62, 72), special_flags=pygame.BLEND_MULT)
-            s.blit(sr_s, tr.topleft, special_flags=pygame.BLEND_ADD)
+        if self._surface_ripples_tinted:
+            s.blit(self._surface_ripples_tinted[self._surface_frame],
+                   tr.topleft, special_flags=pygame.BLEND_ADD)
 
         # ---- Z-8 … Z-19: All tank entities, clipped to interior ----
         s.set_clip(tr)
@@ -813,7 +831,7 @@ class Renderer:
         front = [f for f in fish_list if f.layer == 1 and not f.is_grazing]
 
         for f in back:
-            self._draw_fish(f, tr, show_names)
+            self._draw_fish(f, tr, show_names, show_moods)
         self._draw_bubbles_layer(env.bubbles, 3, tr)
         self._draw_food_layer(env.food, 3, tr)
 
@@ -829,12 +847,10 @@ class Renderer:
         # ---- Z-10.6: BottomCaustics (additive shimmer, bottom strip) ----
         # Drawn AFTER the floor-line mask so the re-blit doesn't erase them;
         # drawn BEFORE coral so caustics appear as floor-level light on sand.
-        if self._caustics_scaled:
-            cf_h = self._caustics_scaled[0].get_height()
-            cs_s = self._caustics_scaled[self._caustic_frame].copy()
-            # Warm-yellow tint then additive blend — can only brighten the floor.
-            cs_s.fill((110, 100, 72), special_flags=pygame.BLEND_MULT)
-            s.blit(cs_s, (tr.left, tr.bottom - cf_h), special_flags=pygame.BLEND_ADD)
+        if self._caustics_tinted:
+            cf_h = self._caustics_tinted[0].get_height()
+            s.blit(self._caustics_tinted[self._caustic_frame],
+                   (tr.left, tr.bottom - cf_h), special_flags=pygame.BLEND_ADD)
 
         # ---- Z-10.7: SunRays (animated oscillating light shafts) ----
         # Drawn AFTER the floor-line mask so their bright zone (lower half of
@@ -850,7 +866,7 @@ class Renderer:
 
         # ---- Z-12/13/14: Mid-layer entities (layer 2) ----
         for f in mid:
-            self._draw_fish(f, tr, show_names)
+            self._draw_fish(f, tr, show_names, show_moods)
         self._draw_bubbles_layer(env.bubbles, 2, tr)
         self._draw_food_layer(env.food, 2, tr)
 
@@ -875,7 +891,7 @@ class Renderer:
         # ---- Z-17/18/19: Front-layer entities (layer 1) ----
         self._draw_food_layer(env.food, 1, tr)
         for f in front:
-            self._draw_fish(f, tr, show_names)
+            self._draw_fish(f, tr, show_names, show_moods)
         self._draw_bubbles_layer(env.bubbles, 1, tr)
 
         # ---- Z-19.5: Grazing algae seekers ----
@@ -883,7 +899,7 @@ class Renderer:
         # pressed against the front glass, never hidden behind decorations.
         for f in fish_list:
             if f.is_grazing:
-                self._draw_fish(f, tr, show_names)
+                self._draw_fish(f, tr, show_names, show_moods)
 
         s.set_clip(None)   # ---- end tank clip ----
 
@@ -931,7 +947,7 @@ class Renderer:
                 s.blit(_sl, tr.topleft)
 
         # ---- Z-23: Toolbar buttons ----
-        self._draw_toolbar()
+        self._draw_toolbar(encyclopedia_seen)
 
         # ---- Z-24: Status bar ----
         self._draw_status_bar(paused, locked, stats, status_msg)
@@ -958,7 +974,11 @@ class Renderer:
             by = tr.top + int(b.y)
             sprite = self.assets.bubbles[b.sprite_idx % 3]
             if sprite is not None:
-                scaled = pygame.transform.smoothscale(sprite, (size, size))
+                cache_key = (b.sprite_idx % 3, size)
+                scaled = self._bubble_sprite_cache.get(cache_key)
+                if scaled is None:
+                    scaled = pygame.transform.smoothscale(sprite, (size, size))
+                    self._bubble_sprite_cache[cache_key] = scaled
                 self.surface.blit(scaled, (bx - size // 2, by - size // 2))
             else:
                 pygame.draw.circle(self.surface, (200, 230, 255), (bx, by), size // 2, 1)
@@ -974,13 +994,17 @@ class Renderer:
             fx = tr.left + int(fd.x)
             fy = tr.top  + int(fd.y)
             if layer_flakes:
-                spr = layer_flakes[fd.flake_idx % 9].copy()
-                # Grounded food: dim and slightly brownish to show it's rotting
+                raw_spr = layer_flakes[fd.flake_idx % 9]
+                # Grounded food: pixel-modify a copy so the cached surface is untouched
                 if getattr(fd, "grounded", False):
+                    spr = raw_spr.copy()
                     spr.fill((80, 50, 0, 0), special_flags=pygame.BLEND_RGBA_SUB)
                     spr.set_alpha(max(60, alpha - 60))
                 else:
-                    spr.set_alpha(alpha)
+                    # Non-grounded: set alpha directly on the cached surface (same
+                    # alpha value every time per layer — no pixel data changed).
+                    raw_spr.set_alpha(alpha)
+                    spr = raw_spr
                 self.surface.blit(spr, (fx - size // 2, fy - size // 2))
             else:
                 col = (140, 100, 40) if getattr(fd, "grounded", False) else (220, 180, 80)
@@ -989,7 +1013,7 @@ class Renderer:
     # -----------------------------------------------------------------------
     # Fish rendering
     # -----------------------------------------------------------------------
-    def _draw_fish(self, f, tr: pygame.Rect, show_names: bool) -> None:
+    def _draw_fish(self, f, tr: pygame.Rect, show_names: bool, show_moods: bool = False) -> None:
         sheet_name = f.sp.get("sheet", "fish_new.png")
         sheet = self.assets.fish_sheets.get(sheet_name)
         if sheet is None:
@@ -1032,6 +1056,12 @@ class Renderer:
         if is_algae_seeker and f.is_grazing and f.graze_angle != 0.0:
             spr = pygame.transform.rotate(spr, f.graze_angle)
 
+        # Health < 0.6: fade toward transparent as the fish declines
+        if f.health < 0.6:
+            spr.set_alpha(max(30, int(255 * f.health / 0.6)))
+        else:
+            spr.set_alpha(255)
+
         sw, sh = spr.get_size()
         sx = tr.left + int(f.x) - sw // 2
         sy = tr.top  + int(f.y) - sh // 2
@@ -1041,6 +1071,27 @@ class Renderer:
             label = self.font.render(f.name, True, (180, 220, 255))
             self.surface.blit(label, (sx + sw // 2 - label.get_width() // 2,
                                       sy - label.get_height() - 1))
+
+        if show_moods:
+            _MOOD_COLOURS = {
+                "happy":    (30,  200,  60),
+                "content":  (220, 200,  40),
+                "stressed": (220,  60,  60),
+                "hungry":   (220, 160,  20),
+            }
+            mood     = getattr(f, "mood", "content")
+            mood_col = _MOOD_COLOURS.get(mood, (128, 128, 128))
+            if show_names:
+                # Sit the dot to the right of the name, vertically centred with it
+                name_w = self.font.size(f.name)[0]
+                name_h = self.font.get_height()
+                dot_x = sx + sw // 2 + name_w // 2 + 7
+                dot_y = sy - name_h // 2 - 1
+            else:
+                dot_x = sx + sw // 2
+                dot_y = sy - 6
+            pygame.draw.circle(self.surface, mood_col, (dot_x, dot_y), 4)
+            pygame.draw.circle(self.surface, (0, 0, 0),   (dot_x, dot_y), 4, 1)
 
     # -----------------------------------------------------------------------
     # Chrome drawing
@@ -1075,7 +1126,13 @@ class Renderer:
 
         # Right-aligned stats: "Fish: N   Algae: N%   [coin] N"
         stats_str  = f"Fish: {fish_count}   Algae: {algae_pct}%"
-        coins_str  = f"  {coins}"
+        # Abbreviate large coin counts to keep the title bar uncluttered
+        if coins >= 1_000_000:
+            coins_str = f"  {coins / 1_000_000:.1f}M"
+        elif coins >= 10_000:
+            coins_str = f"  {coins // 1_000}k"
+        else:
+            coins_str = f"  {coins}"
         stats_surf = self.font.render(stats_str, True, (255, 255, 255))
         coins_surf = self.font.render(coins_str, True, (255, 230, 80))
         stats_surf.set_alpha(220)
@@ -1084,6 +1141,8 @@ class Renderer:
         coin_count_x = w - 6 - coins_surf.get_width()
         icon_x = coin_count_x - 12
         stats_x = icon_x - 4 - stats_surf.get_width()
+        # Prevent stats overlapping "Aquarium 98" title on narrow windows
+        stats_x = max(8 + title.get_width() + 8, stats_x)
         ty = tb.top + (tb.h - stats_surf.get_height()) // 2
         self.surface.blit(stats_surf,  (stats_x, ty))
         # Coin icon: small gold circle (drawn, not from sprite)
@@ -1114,18 +1173,16 @@ class Renderer:
         if pressed:
             pygame.draw.rect(self.surface, (0, 80, 200), (x, y, 36, 36), 2)
 
-    def _draw_toolbar(self) -> None:
+    def _draw_toolbar(self, encyclopedia_seen: int = 0) -> None:
         # 36×36 icons, centred in the 48 px left chrome (x=6), 4 px gaps (spacing=40)
         self._draw_tb_btn('food',         6,  28, pressed=self.food_mode)
         self._draw_tb_btn('clean',        6,  68, pressed=self.clean_mode)
         self._draw_tb_btn('roster',       6, 108, pressed=self.roster_mode)
-        self._draw_tb_btn('event_log',    6, 148, pressed=getattr(self, 'event_log_mode', False))
-        self._draw_tb_btn('achievements', 6, 188, pressed=getattr(self, 'achievements_mode', False))
-        self._draw_tb_btn('encyclopedia', 6, 228, pressed=getattr(self, 'encyclopedia_mode', False))
-        self._draw_tb_btn('graveyard',    6, 268, pressed=getattr(self, 'graveyard_mode', False))
-        self._draw_tb_btn('store',        6, 308, pressed=getattr(self, 'store_mode', False))
-
-        # Test-mode spawn button removed
+        self._draw_tb_btn('event_log',    6, 148, pressed=self.event_log_mode)
+        self._draw_tb_btn('achievements', 6, 188, pressed=self.achievements_mode)
+        self._draw_tb_btn('encyclopedia', 6, 228, pressed=self.encyclopedia_mode)
+        self._draw_tb_btn('graveyard',    6, 268, pressed=self.graveyard_mode)
+        self._draw_tb_btn('store',        6, 308, pressed=self.store_mode)
 
     def _draw_status_bar(self, paused: bool, locked: bool, stats: dict,
                          status_msg: str = "") -> None:

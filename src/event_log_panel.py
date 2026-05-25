@@ -70,7 +70,7 @@ class EventLogPanel:
     def toggle(self) -> None:
         self.visible = not self.visible
         if self.visible:
-            self._scroll = 0   # jump to oldest; user can scroll to newest
+            self._scroll = 0   # scroll=0 shows newest events; scroll up for older
 
     def open(self) -> None:
         self.visible = True

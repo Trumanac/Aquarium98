@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  installer/entitlements.plist
+  macOS hardened-runtime entitlements for Aquarium 98.
+
+  Only the minimum permissions needed to run pygame + pystray on macOS.
+  Required when signing with --options runtime (hardened runtime).
+-->
+<plist version="1.0">
+<dict>
+  <!-- Allow the app to run unsigned code (needed for some pygame internals) -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!-- Allow dyld environment variables (needed by some SDL2 builds) -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+
+  <!-- Disable library validation so bundled SDL2/pygame dylibs are accepted -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

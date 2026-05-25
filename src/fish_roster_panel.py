@@ -34,6 +34,7 @@ class FishRosterPanel:
         self._hover  = -1         # hovered row index
         self._rect   = pygame.Rect(0, 0, PW, 200)   # updated each draw
         self._rows: list[pygame.Rect] = []           # screen rects per row
+        self.tip_regions: list[tuple[pygame.Rect, str]] = []  # for tooltips
         self._fish_sheets: dict[str, pygame.Surface] = {}
         # Thumbnail cache: fish id → small Surface
         self._thumb_cache: dict[int, pygame.Surface] = {}
@@ -136,6 +137,7 @@ class FishRosterPanel:
 
         # Rows
         self._rows = []
+        self.tip_regions = []
         ry = py + header_h + 2
         visible_fish = fish_list[self._scroll: self._scroll + visible_rows]
         for i, f in enumerate(visible_fish):
@@ -192,6 +194,27 @@ class FishRosterPanel:
             ind_cy = rr.top + ROW_H // 2
             pygame.draw.circle(surface, mood_col, (ind_cx, ind_cy), ind_r)
             pygame.draw.circle(surface, (0, 0, 0),  (ind_cx, ind_cy), ind_r, 1)
+
+            # Register tooltip regions for rarity and mood dots
+            _mood_tips = {"happy": "Happy — well-fed and thriving",
+                          "content": "Content — healthy normal state",
+                          "stressed": "Stressed — overcrowded or dirty water",
+                          "hungry": "Hungry — feed soon or health will drop"}
+            self.tip_regions.append((
+                pygame.Rect(ind_cx - 8, ind_cy - 8, 16, 16),
+                _mood_tips.get(mood, f"Mood: {mood}"),
+            ))
+            if rarity_col:
+                if rarity_col == _COL_SUPER_RARE:
+                    _rarity_text = "Epic — extremely rare find"
+                elif rarity_col == _COL_RARE:
+                    _rarity_text = "Rare — hard to find"
+                else:
+                    _rarity_text = "Uncommon — appears less often"
+                self.tip_regions.append((
+                    pygame.Rect(dot_x - 8, dot_y - 8, 16, 16),
+                    _rarity_text,
+                ))
 
             ns = self.font.render(name, True, WIN_LIGHT)
             max_name_w = (ind_cx - ind_r) - 3 - dot_x - name_off - 4

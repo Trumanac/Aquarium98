@@ -18,7 +18,7 @@ Rarity base buy prices:
   Uncommon : 10-22 coins
 
 Manual restock cost:
-  Easy 10 / Normal 15 / Hard 20
+  Easy 25 / Normal 40 / Hard 65 / Brutal 90 / Nightmare 120
 
 Auto-restock: every 300 s (5 minutes)
 """
@@ -32,6 +32,7 @@ from typing import Optional
 import pygame
 
 from .simulation.species import common_species, uncommon_species
+from .coin_system import fish_sell_price
 
 # ---------------------------------------------------------------------------
 # Win98 palette (mirrors renderer.py)
@@ -58,8 +59,8 @@ _ROW_H  = 26      # sell-list row height
 _RESTOCK_H = 28   # restock row height
 
 # Difficulty price multipliers
-_PRICE_MULT  = {1: 1.0, 2: 1.25, 3: 1.60}
-_RESTOCK_COST = {1: 25,  2: 40,   3: 65}
+_PRICE_MULT  = {1: 1.0, 2: 1.25, 3: 1.60, 4: 2.10, 5: 2.70}
+_RESTOCK_COST = {1: 25, 2: 40, 3: 65, 4: 90, 5: 120}
 
 RESTOCK_INTERVAL = 300.0   # seconds between auto-restocks
 
@@ -169,6 +170,8 @@ class FishStorePanel:
         self._sell_rows:  list[tuple[pygame.Rect, object]] = []   # (rect, fish)
         self._scroll_up   = pygame.Rect(0, 0, 0, 0)
         self._scroll_dn   = pygame.Rect(0, 0, 0, 0)
+        self._slot_previews: list[pygame.Surface | None] = []   # cached per-slot fish previews
+        self.tip_regions: list[tuple[pygame.Rect, str]] = []    # for tooltips
 
     # ------------------------------------------------------------------ #
     def open(self, cfg: dict, screen_size: tuple[int, int]) -> None:
@@ -208,6 +211,7 @@ class FishStorePanel:
             price = max(1, round(base * mult))
             self.slots.append(StoreSlot(species=sp, price=price))
         self._restock_timer = 0.0
+        self._slot_previews = []   # invalidate preview cache on restock
 
     def mark_slot_bought(self, species: dict) -> None:
         """Mark the slot for *species* as sold."""
@@ -372,18 +376,21 @@ class FishStorePanel:
                 _btn(surface, buy_r, "Sold", self.font, enabled=False)
                 continue
 
-            # Fish preview sprite
-            sp = slot.species
-            sheet_name = sp.get("sheet", "fish_new.png")
-            sheet = fish_sheets.get(sheet_name)
-            fish_preview = None
-            if sheet is not None:
-                sw2, sh2 = sheet.get_size()
-                fw, fh = sw2 // 3, sh2 // 3
-                frame0 = sheet.subsurface(pygame.Rect(0, 0, fw, fh)).copy()
-                preview_h = min(32, _BOWL_D - 14)
-                preview_w = max(10, int(preview_h * fw / max(1, fh)))
-                fish_preview = pygame.transform.smoothscale(frame0, (preview_w, preview_h))
+            # Fish preview sprite — cached on first draw after each restock
+            if len(self._slot_previews) != len(self.slots):
+                self._slot_previews = [None] * len(self.slots)
+            fish_preview = self._slot_previews[i]
+            if fish_preview is None:
+                _sp = slot.species
+                _sh = fish_sheets.get(_sp.get("sheet", "fish_new.png"))
+                if _sh is not None:
+                    _sw, _sh2 = _sh.get_size()
+                    _fw, _fh = _sw // 3, _sh2 // 3
+                    _frame0 = _sh.subsurface(pygame.Rect(0, 0, _fw, _fh)).copy()
+                    _ph = min(32, _BOWL_D - 14)
+                    _pw = max(10, int(_ph * _fw / max(1, _fh)))
+                    fish_preview = pygame.transform.smoothscale(_frame0, (_pw, _ph))
+                    self._slot_previews[i] = fish_preview
 
             _draw_bowl(surface, col_cx, bowl_cy, _BOWL_D, fish_preview)
 
@@ -438,15 +445,16 @@ class FishStorePanel:
         up_icon = btn_icons.get('scroll_up') if btn_icons else None
         dn_icon = btn_icons.get('scroll_dn') if btn_icons else None
         if up_icon:
-            surface.blit(pygame.transform.smoothscale(up_icon, (14, 14)), self._scroll_up.topleft)
+            surface.blit(up_icon, self._scroll_up.topleft)
         else:
             _btn(surface, self._scroll_up, "+", self.font)
         if dn_icon:
-            surface.blit(pygame.transform.smoothscale(dn_icon, (14, 14)), self._scroll_dn.topleft)
+            surface.blit(dn_icon, self._scroll_dn.topleft)
         else:
             _btn(surface, self._scroll_dn, "-", self.font)
 
         self._sell_rows = []
+        self.tip_regions = []
         if not fish_list:
             no_fish = self.font.render("No fish to sell.", True, WIN_MID)
             surface.blit(no_fish, (p.left + _PAD, sell_list_y + 4))
@@ -464,15 +472,29 @@ class FishStorePanel:
                 if ri % 2 == 0:
                     pygame.draw.rect(surface, (182, 182, 190), row_r)
 
-                # Fish mini-sprite (6×6 colour dot from species mood)
-                mood_col = {
-                    "happy":   (60, 200, 60),
-                    "content": (80, 180, 220),
-                    "stressed":(220, 140, 0),
-                    "hungry":  (200, 60, 60),
-                }.get(getattr(fish, "mood", "content"), WIN_MID)
-                pygame.draw.circle(surface, mood_col,
+                # Rarity dot (matches Fish List panel colours)
+                _sp = fish.sp
+                if _sp.get("super_rare"):
+                    _rdot = (180, 70, 240)   # purple
+                elif _sp.get("rare"):
+                    _rdot = (80, 150, 255)   # blue
+                elif _sp.get("uncommon"):
+                    _rdot = (60, 210, 80)    # green
+                else:
+                    _rdot = (160, 160, 160)  # gray — common
+                pygame.draw.circle(surface, _rdot,
                                    (row_r.left + 8, row_r.centery), 5)
+                pygame.draw.circle(surface, (0, 0, 0),
+                                   (row_r.left + 8, row_r.centery), 5, 1)
+                # Tooltip for rarity dot
+                _rarity_label = ("Epic" if _sp.get("super_rare")
+                                 else "Rare" if _sp.get("rare")
+                                 else "Uncommon" if _sp.get("uncommon")
+                                 else "Common")
+                self.tip_regions.append((
+                    pygame.Rect(row_r.left, row_r.centery - 8, 16, 16),
+                    f"Rarity: {_rarity_label}",
+                ))
 
                 # Name + species
                 nm = getattr(fish, "name", "?")
@@ -482,7 +504,6 @@ class FishStorePanel:
                 surface.blit(lbl_surf, (row_r.left + 18, row_r.top + (row_r.h - lbl_surf.get_height()) // 2))
 
                 # Sell price + button — lay out right-to-left to avoid overlap
-                from .coin_system import fish_sell_price
                 price = fish_sell_price(fish)
                 sell_r = pygame.Rect(row_r.right - 34, ry2 + 3, 32, _ROW_H - 6)
                 price_s = self.font.render(f"{price}c", True, (120, 90, 0))

@@ -245,7 +245,7 @@ class FishInfoPanel:
 
     def _apply_rename(self) -> None:
         nm = self._rename.strip()
-        if nm and self.fish is not None:
+        if nm and self.fish is not None and nm != self.fish.name:
             self.fish.name = nm
             self.fish.custom_name = True
 

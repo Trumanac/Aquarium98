@@ -44,6 +44,8 @@ def feed_menu() -> list[MenuItem]:
         MenuItem("Always on Top",      "toggle_top",    False),
         MenuItem("Pause When Hidden",  "toggle_phide",  True),
         MenuItem("Show Fish Names",    "toggle_names",  False),
+        MenuItem("Show Fish Moods",    "toggle_moods",  False),
+        MenuItem("Mute Sounds",        "toggle_mute",   False),
         MenuItem("---", None),
         MenuItem("Opacity",            None,            submenu=[
             MenuItem("100%", "op_100"),
@@ -52,6 +54,7 @@ def feed_menu() -> list[MenuItem]:
             MenuItem(" 50%", "op_50"),
             MenuItem(" 30%", "op_30"),
         ]),
+        MenuItem("How to Play...",     "how_to_play"),
         MenuItem("About Aquarium 98...", "about"),
         MenuItem("Settings...",        "settings"),
         MenuItem("---", None),

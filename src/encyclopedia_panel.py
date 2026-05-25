@@ -7,7 +7,7 @@ Displays every species from SPECIES list. Each entry shows:
   - A fun fact / description snippet once seen.
 
 Entries are organised into rarity sections:
-  Common | Uncommon | Rare | Super Rare
+  Common | Uncommon | Rare | Epic
 
 "Seen" is tracked in cfg["seen_species"] — a list of species-name strings.
 Call  mark_seen(cfg, species_name)  whenever a fish is first spotted in the tank.
@@ -26,7 +26,7 @@ WIN_DARK  = (64,  64,  64)
 WIN_MID   = (128, 128, 128)
 TITLE_A   = (0,   0,   128)
 TITLE_B   = (16, 132, 208)
-PANEL_BG  = (245, 245, 245)
+PANEL_BG  = (192, 192, 192)
 GRID_BG   = (230, 230, 230)
 
 COL_COMMON     = (160, 160, 160)
@@ -46,7 +46,7 @@ _BUCKETS: list[tuple[str, tuple]] = [
     ("Common",     COL_COMMON),
     ("Uncommon",   COL_UNCOMMON),
     ("Rare",       COL_RARE),
-    ("Super Rare", COL_SUPER_RARE),
+    ("Epic",       COL_SUPER_RARE),
 ]
 
 
@@ -224,6 +224,7 @@ class EncyclopediaPanel:
                     return max(_ROW_H, 4 + fh + 2 + fh + 4 + nlines * (fh + 2) + 8)
             return _ROW_H
 
+        _sp_row_idx = {id(sp_): i for i, sp_ in enumerate(self._sorted)}
         self._row_rects = {}
         total_h = sum(item_h(it) for it in items)
         max_scroll = max(0, total_h - content_h)
@@ -250,7 +251,7 @@ class EncyclopediaPanel:
                 _, sp = item
                 row_r = pygame.Rect(px + 2, ry, PW - 4, ih)
                 # Alternating row tint
-                pygame.draw.rect(surface, GRID_BG if self._sorted.index(sp) % 2 == 0
+                pygame.draw.rect(surface, GRID_BG if _sp_row_idx.get(id(sp), 0) % 2 == 0
                                  else PANEL_BG, row_r)
 
                 seen = is_seen(cfg, sp["name"])
@@ -280,7 +281,7 @@ class EncyclopediaPanel:
                     badge_y = ry + 4 + fh + 2
                     bk = _rarity_key(sp)
                     if bk == 3:
-                        badge_col, badge_txt = COL_SUPER_RARE, "★ SUPER RARE"
+                        badge_col, badge_txt = COL_SUPER_RARE, "★ EPIC"
                     elif bk == 2:
                         badge_col, badge_txt = COL_RARE, "★ RARE"
                     elif bk == 1:

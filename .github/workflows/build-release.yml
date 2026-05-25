@@ -1,0 +1,231 @@
+name: Build & Release
+
+# Trigger on version tags (e.g., v1.0.0) or manual dispatch
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string (e.g. 1.0.0) — used for artifact naming"
+        required: true
+        default: "0.0.0-dev"
+
+# Derive version from tag name or manual input
+env:
+  VERSION: ${{ github.event_name == 'push' && github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Windows build — produces Aquarium98-Setup-X.Y.Z.exe
+# ──────────────────────────────────────────────────────────────────────────────
+jobs:
+  build-windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Generate icons (pre-bundle step)
+        run: python -c "from src.icon_gen import ensure_icons; ensure_icons()"
+
+      - name: PyInstaller — build onedir bundle
+        run: pyinstaller aquarium98.spec
+
+      - name: Inno Setup — create installer
+        run: |
+          $version = "${{ env.VERSION }}".TrimStart('v')
+          # Rewrite the version in the ISS file for this build
+          (Get-Content installer\aquarium98.iss) `
+            -replace '#define MyAppVersion.*', "#define MyAppVersion   `"$version`"" |
+            Set-Content installer\aquarium98.iss
+          # Run Inno Setup (pre-installed on windows-latest)
+          & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" installer\aquarium98.iss
+        shell: pwsh
+
+      # Optional: sign the installer if Azure Trusted Signing is configured
+      # Uncomment and configure when you subscribe to Azure Trusted Signing (~$9.99/mo)
+      # - name: Sign installer (Azure Trusted Signing)
+      #   uses: azure/trusted-signing-action@v0
+      #   with:
+      #     azure-tenant-id:           ${{ secrets.AZURE_TENANT_ID }}
+      #     azure-client-id:           ${{ secrets.AZURE_CLIENT_ID }}
+      #     azure-client-secret:       ${{ secrets.AZURE_CLIENT_SECRET }}
+      #     endpoint:                  ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+      #     trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+      #     certificate-profile-name:  ${{ secrets.AZURE_CERT_PROFILE }}
+      #     files-folder:              installer\Output
+      #     files-folder-filter:       exe
+      #     file-digest:               SHA256
+      #     timestamp-rfc3161:         http://timestamp.acs.microsoft.com
+      #     timestamp-digest:          SHA256
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: installer/Output/Aquarium98-Setup-*.exe
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Linux build — produces Aquarium98-x86_64.AppImage
+  # ──────────────────────────────────────────────────────────────────────────
+  build-linux:
+    name: Linux AppImage
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libglib2.0-dev libgirepository1.0-dev libayatana-appindicator3-dev \
+            fuse libfuse2 file
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Generate icons
+        run: python -c "from src.icon_gen import ensure_icons; ensure_icons()"
+
+      - name: PyInstaller — build onedir bundle
+        run: pyinstaller aquarium98.spec
+
+      - name: Build AppImage
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"   # strip leading 'v'
+          chmod +x installer/build_appimage.sh
+          installer/build_appimage.sh "$VERSION"
+
+      - name: Upload Linux AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist/Aquarium98-*.AppImage
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # macOS build — produces Aquarium98-X.Y.Z.dmg
+  # ──────────────────────────────────────────────────────────────────────────
+  build-macos:
+    name: macOS DMG
+    runs-on: macos-14   # Apple Silicon runner (also builds universal2 if needed)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Generate icons
+        run: python -c "from src.icon_gen import ensure_icons; ensure_icons()"
+
+      # If you ever have an Apple Developer ID: set APPLE_DEV_ID secret and
+      # set CODESIGN_IDENTITY below. Without it, ad-hoc signing is used.
+      - name: PyInstaller — build .app bundle
+        env:
+          CODESIGN_IDENTITY: ${{ secrets.APPLE_DEV_ID || '-' }}
+        run: pyinstaller aquarium98.spec
+
+      - name: Create DMG
+        run: |
+          VERSION="${{ env.VERSION }}"
+          VERSION="${VERSION#v}"
+          chmod +x installer/create_dmg.sh
+          installer/create_dmg.sh "$VERSION"
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/Aquarium98-*.dmg
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # GitHub Release — combine all artifacts and publish
+  # ──────────────────────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    # Only create a release for real version tags (not manual dispatch)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write   # required to create releases and upload assets
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create stable-named copies (for /releases/latest/download/ links)
+        run: |
+          # These fixed filenames are what the README download links point to.
+          # GitHub's /releases/latest/download/FILENAME redirect requires an
+          # exact filename match — version numbers break it.
+          find release-artifacts/windows-installer -name "*.exe" | sort | tail -1 \
+            | xargs -I{} cp {} release-artifacts/windows-installer/Aquarium98-Setup.exe
+          find release-artifacts/linux-appimage -name "*.AppImage" | sort | tail -1 \
+            | xargs -I{} cp {} release-artifacts/linux-appimage/Aquarium98-x86_64.AppImage
+          find release-artifacts/macos-dmg -name "*.dmg" | sort | tail -1 \
+            | xargs -I{} cp {} release-artifacts/macos-dmg/Aquarium98.dmg
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd release-artifacts
+          find . -type f \( -name "*.exe" -o -name "*.AppImage" -o -name "*.dmg" \) \
+            -exec sha256sum {} \; | tee ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt .
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Aquarium 98 ${{ env.VERSION }}"
+          draft: true        # review before publishing
+          prerelease: ${{ contains(env.VERSION, '-') }}
+          generate_release_notes: true
+          body: |
+            | Platform | Download |
+            |----------|----------|
+            | **Windows 10/11** (64-bit) | [Aquarium98-Setup.exe](https://github.com/${{ github.repository }}/releases/latest/download/Aquarium98-Setup.exe) |
+            | **macOS** 10.15+ | [Aquarium98.dmg](https://github.com/${{ github.repository }}/releases/latest/download/Aquarium98.dmg) |
+            | **Linux** (x86_64) | [Aquarium98-x86_64.AppImage](https://github.com/${{ github.repository }}/releases/latest/download/Aquarium98-x86_64.AppImage) |
+
+            SHA256 checksums are in `SHA256SUMS.txt`.
+
+            **Windows:** SmartScreen may warn on first run — click **More info → Run anyway**.
+
+            **macOS:** If blocked by Gatekeeper, right-click → **Open**, or run: `xattr -dr com.apple.quarantine /Applications/Aquarium98.app`
+
+            **Linux:** `chmod +x Aquarium98-x86_64.AppImage && ./Aquarium98-x86_64.AppImage`
+          files: |
+            release-artifacts/**/*.exe
+            release-artifacts/**/*.AppImage
+            release-artifacts/**/*.dmg
+            release-artifacts/**/SHA256SUMS.txt

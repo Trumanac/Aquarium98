@@ -153,6 +153,10 @@ def make_fish(tank_w: int, tank_h: int, *,
                 x = random.uniform(20, tank_w - 20)
                 if x < cxmin or x > cxmax:
                     break
+            else:
+                # All attempts landed in the castle zone (extremely unlikely) —
+                # place to the left of it as a guaranteed safe fallback.
+                x = random.uniform(20, max(21.0, cxmin - 2.0))
         else:
             x = random.uniform(20, tank_w - 20)
     if y is None:

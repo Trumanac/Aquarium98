@@ -45,12 +45,16 @@ _COIN_RANGES: dict[int, tuple[int, int]] = {
     1: (15, 35),
     2: (10, 25),
     3: (5,  15),
+    4: (3,  10),
+    5: (2,   7),
 }
 
 _COOLDOWN: dict[int, tuple[int, int]] = {
     1: (90,  180),
     2: (150, 300),
     3: (240, 480),
+    4: (360, 720),
+    5: (480, 900),
 }
 
 # How many existing bubbles to redirect to the chest on open

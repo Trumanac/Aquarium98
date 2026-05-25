@@ -15,17 +15,29 @@ from __future__ import annotations
 
 import datetime
 import logging
+import logging.handlers
 import math
 import os
 import platform
 import random
 import sys
 import time
+import traceback
 from pathlib import Path
+
+try:
+    from importlib.metadata import version as _pkg_version
+    APP_VERSION = _pkg_version("aquarium98")
+except Exception:  # noqa: BLE001
+    APP_VERSION = "1.0.4"
 
 import pygame
 
-# Ensure project root on path (works when launched via `python aquarium.py`)
+# Ensure project root on path (works when launched via `python aquarium.py`).
+# In a PyInstaller one-dir bundle, __file__ resolves into sys._MEIPASS, so
+# ROOT is the extraction dir — the same place assets/ and config.default.json
+# are unpacked.  User-writable data (config, saves, logs) always goes to
+# cfg_mod.USER_DIR (~\Documents\Aquarium98 on Win/macOS; ~/.local/share on Linux).
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
@@ -35,9 +47,10 @@ from src.context_menu import ContextMenu, feed_menu
 from src.icon_gen import ensure_icons
 from src.renderer import Renderer, PAD_B, fish_screen_rect
 from src.settings_dialog import SettingsDialog
-from src.confirm_dialog import ConfirmDialog, FullResetDialog, AboutDialog
+from src.confirm_dialog import ConfirmDialog, FullResetDialog, AboutDialog, CrashDialog
+from src.how_to_play_panel import HowToPlayPanel
 from src.event_log_panel import EventLogPanel, log_event
-from src.achievements_panel import AchievementsPanel, check_achievements, unlock, is_unlocked
+from src.achievements_panel import ACHIEVEMENTS, AchievementsPanel, check_achievements, unlock, is_unlocked
 from src.encyclopedia_panel import EncyclopediaPanel, mark_seen, is_seen
 from src.graveyard_panel import GraveyardPanel, log_death
 from src.fish_info_panel import FishInfoPanel
@@ -49,6 +62,7 @@ from src.simulation.environment import (
     spawn_food_at, update_environment,
 )
 from src.simulation.fish import make_fish, update_biology, update_fish, update_mood
+from src.simulation.species import SPECIES
 from src.simulation.population import (
     cull_dead, ensure_min_population, maybe_change_layer, try_breed,
 )
@@ -60,8 +74,14 @@ from src.coin_system import (
 from src.treasure_chest import TreasureChest, make_chest
 from src.fish_store_panel import FishStorePanel
 from src.cursor_manager import CursorManager
+from src.tooltip import Tooltip
+from src.sound_manager import SoundManager
+from src.achievement_popup import AchievementPopup
+from src import update_check
 
-LOG_DIR = ROOT / "logs"
+# Logs live in the user data dir so they survive app updates / re-installs
+# and are writable whether the app is run from source or as a frozen bundle.
+LOG_DIR   = cfg_mod.USER_DIR / "logs"
 LOCK_FILE = Path.home() / ".aquarium98.lock"
 
 SIM_HZ = 20
@@ -74,13 +94,13 @@ IS_WINDOWS = platform.system() == "Windows"
 def _setup_logging() -> None:
     LOG_DIR.mkdir(exist_ok=True)
     logfile = LOG_DIR / "aquarium.log"
+    rotating = logging.handlers.RotatingFileHandler(
+        logfile, maxBytes=500_000, backupCount=3, encoding="utf-8"
+    )
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[
-            logging.FileHandler(logfile, mode="a", encoding="utf-8"),
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=[rotating, logging.StreamHandler(sys.stdout)],
     )
 
 
@@ -89,12 +109,37 @@ def _is_process_running(pid: int) -> bool:
         return False
     try:
         os.kill(pid, 0)
+        return True
+    except PermissionError:
+        # Process exists but we lack permission to signal it — still running.
+        return True
     except OSError:
         return False
-    return True
+
+
+# Windows named-mutex handle — kept alive for the process lifetime.
+_WIN_MUTEX_HANDLE: object = None
+_WIN_MUTEX_NAME = "Global\\Aquarium98SingleInstance"
 
 
 def _acquire_lock() -> bool:
+    global _WIN_MUTEX_HANDLE
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            import ctypes.wintypes
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.CreateMutexW(None, True, _WIN_MUTEX_NAME)
+            err = kernel32.GetLastError()
+            if err == 183:          # ERROR_ALREADY_EXISTS
+                if handle:
+                    kernel32.CloseHandle(handle)
+                return False
+            _WIN_MUTEX_HANDLE = handle  # keep alive until process exits
+            return True
+        except Exception:  # ctypes unavailable / unexpected error
+            pass            # fall through to lockfile
+    # POSIX (and Windows fallback): PID lockfile
     if LOCK_FILE.exists():
         try:
             old = int(LOCK_FILE.read_text(encoding="utf-8").strip())
@@ -110,11 +155,46 @@ def _acquire_lock() -> bool:
 
 
 def _release_lock() -> None:
+    global _WIN_MUTEX_HANDLE
+    if IS_WINDOWS and _WIN_MUTEX_HANDLE is not None:
+        try:
+            import ctypes
+            ctypes.windll.kernel32.CloseHandle(_WIN_MUTEX_HANDLE)
+        except Exception:
+            pass
+        _WIN_MUTEX_HANDLE = None
     try:
         if LOCK_FILE.exists():
             LOCK_FILE.unlink()
     except OSError:
         pass
+
+
+def _show_already_running_error() -> None:
+    """Display a visible error when a second instance is launched."""
+    title = "Aquarium 98 — Already Running"
+    msg = (
+        "Aquarium 98 is already running.\n\n"
+        "Only one instance can run at a time.\n"
+        "Check your system tray."
+    )
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            # MB_OK | MB_ICONERROR | MB_TOPMOST = 0x00040010
+            ctypes.windll.user32.MessageBoxW(0, msg, title, 0x00040010)
+            return
+        except Exception:
+            pass
+    try:
+        import tkinter as tk
+        from tkinter import messagebox as _mb
+        _root = tk.Tk()
+        _root.withdraw()
+        _mb.showerror(title, msg)
+        _root.destroy()
+    except Exception:
+        print(f"\n{title}\n{msg}", file=sys.stderr)
 
 
 def main() -> int:
@@ -123,6 +203,7 @@ def main() -> int:
 
     if not _acquire_lock():
         log.warning("Another instance is already running; exiting.")
+        _show_already_running_error()
         return 0
 
     try:
@@ -162,7 +243,9 @@ def main() -> int:
         cfg["last_opened_date"] = today_str
 
         # Show startup splash before the main game window is created
+        pygame.mixer.pre_init(44100, -16, 2, 512)
         pygame.display.init()
+        pygame.mixer.init()
         pygame.font.init()
         show_splash()
 
@@ -177,7 +260,8 @@ def main() -> int:
         fish_roster   = FishRosterPanel(font)
         confirm_dlg   = ConfirmDialog(font)
         full_reset_dlg = FullResetDialog(font)
-        about_dlg      = AboutDialog(font)
+        about_dlg      = AboutDialog(font, APP_VERSION)
+        how_to_play    = HowToPlayPanel(font)
         event_log     = EventLogPanel(font)
         achievements  = AchievementsPanel(font)
         encyclopedia  = EncyclopediaPanel(font)
@@ -185,13 +269,48 @@ def main() -> int:
         fish_store    = FishStorePanel(font)
         _pending_reset = False   # set True while waiting for confirm dialog
 
+        # Sound effects (silent no-op if mixer unavailable)
+        sound = SoundManager()
+
+        # Achievement unlock notifications
+        achievement_popup = AchievementPopup(font)
+
+        def _fire_achievement(aid: str) -> None:
+            """Unlock an achievement, then show popup / play sound / award coins."""
+            if not unlock(cfg, aid):
+                return  # already unlocked — nothing to do
+            _ach    = next((a for a in ACHIEVEMENTS if a["id"] == aid),
+                           {"name": aid, "desc": ""})
+            _name   = _ach["name"]
+            _desc   = _ach["desc"]
+            _reward = ACHIEVEMENT_COIN_REWARDS.get(aid, 0)
+            log_event(cfg, f"[*] Achievement unlocked: {_name}", "info")
+            sound.play_achievement()
+            if _reward > 0:
+                earn_coins(cfg, _reward,
+                           float(tr.centerx), float(tr.centery),
+                           coin_popups, log_event,
+                           f"Achievement reward: +{_reward} coins")
+            achievement_popup.push(_name, _desc, _reward)
+
+        # Background version check — result polled lazily in render loop
+        update_check.start(APP_VERSION)
+
         # Custom animated cursors (hides system cursor)
         _ui_dir = str(ROOT / "assets" / "sprites" / "ui")
         cursor_mgr = CursorManager(_ui_dir)
 
+        # Hover tooltips
+        tooltip = Tooltip()
+
         tr = renderer.compute_tank_rect()
         env = make_environment(tr.w, tr.h)
         fish_list = []
+
+        # First-launch: pop the How to Play guide once and remember.
+        if not cfg.get("how_to_play_seen", False):
+            how_to_play.open(*surface.get_size())
+            cfg["how_to_play_seen"] = True
         coin_popups: list[CoinPopup] = []
         chest = make_chest(int(cfg.get("difficulty", 2)))
 
@@ -205,8 +324,11 @@ def main() -> int:
                 mark_seen(cfg, f.sp.get("name", ""))
 
         if not fish_list:
-            # Fresh start — randomise decor for the new tank
-            cfg["castle_choice"] = random.randint(1, 7)
+            # Fresh start: randomise decor only on the very first ever launch;
+            # subsequent empty-tank starts (persist_state off, all fish died, etc.)
+            # keep whatever castle/plant the user last chose.
+            if not cfg.get("_tank_initialized", False):
+                cfg["castle_choice"] = random.randint(1, 5)
             for _ in range(int(cfg.get("start_fish", 6))):
                 f = make_fish(tr.w, tr.h,
                               existing_names={g.name for g in fish_list},
@@ -214,6 +336,9 @@ def main() -> int:
                 fish_list.append(f)
                 mark_seen(cfg, f.sp.get("name", ""))
                 cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + 1
+        # Remember that the tank has been initialised at least once, so decor
+        # is never re-randomised unless the user does a full reset.
+        cfg["_tank_initialized"] = True
 
         # Auto-food drop welcome-back bonus (when returning after a gap)
         if _welcome_back_msg and "missed you" in _welcome_back_msg:
@@ -223,9 +348,30 @@ def main() -> int:
         # Log the welcome-back / streak message
         if _welcome_back_msg:
             log_event(cfg, _welcome_back_msg, "streak")
+            # Streak coin bonus: 5 coins × streak day, capped at 50
+            # (only when gap == 1, i.e. streak > 1 — not on a reset)
+            if streak > 1:
+                _streak_bonus = min(streak * 5, 50)
+                earn_coins(
+                    cfg, _streak_bonus,
+                    float(tr.centerx), float(tr.top + 40),
+                    coin_popups, log_event,
+                    f"Day {streak} streak! +{_streak_bonus} coins",
+                )
 
-        # Startup achievement checks
-        check_achievements(cfg, fish_list)
+        # Startup achievement checks — award coins/popup for any newly triggered
+        # achievements (e.g. "first_steps" on a brand-new install, streak milestones
+        # when the app opens with an already-qualifying streak, etc.).
+        for _startup_aid in check_achievements(cfg, fish_list):
+            _sa = next((a for a in ACHIEVEMENTS if a["id"] == _startup_aid),
+                       {"name": _startup_aid, "desc": ""})
+            _sr = ACHIEVEMENT_COIN_REWARDS.get(_startup_aid, 0)
+            if _sr > 0:
+                earn_coins(cfg, _sr,
+                           float(tr.centerx), float(tr.top + 40),
+                           coin_popups, log_event,
+                           f"Achievement reward: +{_sr} coins")
+            achievement_popup.push(_sa["name"], _sa["desc"], _sr)
 
         sprite_cache: dict = {}
         tray = Tray(icon_path)
@@ -262,8 +408,8 @@ def main() -> int:
         _TIPS = [
             "Right-click anywhere for a quick action menu.",
             "Press Space to pause/unpause the simulation.",
-            "Press F to enter food-drop mode, then click the tank.",
-            "Press C to enter cleaning mode and scrub algae.",
+            "Press F to instantly drop food at the centre of the tank.",
+            "Press C to instantly scrub algae from the tank.",
             "Press E to open the Settings dialog.",
             "Pop bubbles with a click — you might earn a coin!",
             "Fish need food to breed. Keep them well-fed!",
@@ -286,7 +432,7 @@ def main() -> int:
             win_mod.set_opacity(sdl_win, cfg["opacity"])
 
         def do_action(action: str):
-            nonlocal paused, hidden, running, fish_list, env, sprite_cache, _pending_reset
+            nonlocal paused, hidden, running, fish_list, env, sprite_cache, _pending_reset, roster_mode, food_mode, clean_mode
             if action == "quit":
                 running = False
             elif action == "pause":
@@ -318,6 +464,13 @@ def main() -> int:
                 fish_info.close()
                 fish_roster.close()
                 fish_roster.invalidate_all()
+                # Close all secondary panels so stale content never bleeds through
+                event_log.close()
+                achievements.close()
+                encyclopedia.close()
+                graveyard_panel.close()
+                fish_store.close()
+                context.close()
                 roster_mode = False
                 food_mode = False
                 clean_mode = False
@@ -334,7 +487,12 @@ def main() -> int:
                 for f_reset in fish_list:
                     mark_seen(cfg, f_reset.sp.get("name", ""))
                 # Randomise decor for the freshly reset tank
-                cfg["castle_choice"] = random.randint(1, 7)
+                cfg["castle_choice"] = random.randint(1, 5)
+                # Persist immediately — don't wait for the 5-second periodic save.
+                # This ensures a crash or fast-close can never leave fish_state.json
+                # empty/missing while config.json still reflects the pre-reset state.
+                cfg_mod.save(cfg)
+                cfg_mod.save_fish_state(fish_list)
             elif action == "toggle_lock":
                 cfg["locked"] = not bool(cfg.get("locked", False))
             elif action == "toggle_top":
@@ -344,12 +502,19 @@ def main() -> int:
                 cfg["pause_when_hidden"] = not bool(cfg.get("pause_when_hidden", True))
             elif action == "toggle_names":
                 cfg["show_names"] = not bool(cfg.get("show_names", False))
+            elif action == "toggle_moods":
+                cfg["show_moods"] = not bool(cfg.get("show_moods", False))
+            elif action == "toggle_mute":
+                cfg["sound_muted"] = not bool(cfg.get("sound_muted", False))
+                sound.set_muted(bool(cfg["sound_muted"]))
             elif action.startswith("op_"):
                 apply_opacity(int(action[3:]) / 100.0)
             elif action == "settings":
                 settings.open(cfg, surface.get_size())
             elif action == "about":
                 about_dlg.open(*surface.get_size())
+            elif action == "how_to_play":
+                how_to_play.open(*surface.get_size())
             elif action == "event_log":
                 event_log.toggle()
             elif action == "achievements":
@@ -440,6 +605,15 @@ def main() -> int:
                     about_dlg.handle_event(ev)
                     continue
 
+                if how_to_play.visible:
+                    how_to_play.handle_event(ev)
+                    continue
+
+                # Achievement popup eats events while a notification is showing
+                if achievement_popup.visible:
+                    achievement_popup.handle_event(ev)
+                    continue
+
                 if full_reset_dlg.visible:
                     result = full_reset_dlg.handle_event(ev)
                     if result == "confirmed":
@@ -455,8 +629,10 @@ def main() -> int:
                         cfg["stat_total_days"] = 0.0
                         cfg["stat_total_fish"] = 0
                         cfg["stat_peak_fish"]  = 0
-                        cfg["stat_cleans"]     = 0
-                        cfg["stat_renamed"]    = 0
+                        cfg["stat_cleans"]          = 0
+                        cfg["stat_renamed"]          = 0
+                        cfg["stat_bubbles_popped"]   = 0
+                        cfg["stat_shoppe_buys"]      = 0
                         cfg_mod.save(cfg)
                         cfg_mod.clear_fish_state()  # wipe persisted fish on full reset
                         win_mod.set_opacity(sdl_win, cfg.get("opacity", 1.0))
@@ -493,7 +669,7 @@ def main() -> int:
                     if result == "renamed":
                         # Only count and unlock when the name was actually changed
                         cfg["stat_renamed"] = int(cfg.get("stat_renamed", 0)) + 1
-                        unlock(cfg, "name_changer")
+                        _fire_achievement("name_changer")
                     # Panel handles its own drag/close; keep consuming events while visible
                     continue
 
@@ -578,9 +754,13 @@ def main() -> int:
                                 fish_list.append(new_f)
                                 fish_store.mark_slot_bought(sp_buy)
                                 mark_seen(cfg, sp_buy.get("name", ""))
-                                cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + 1
+                                cfg["stat_total_fish"]  = int(cfg.get("stat_total_fish", 0)) + 1
+                                cfg["stat_shoppe_buys"] = int(cfg.get("stat_shoppe_buys", 0)) + 1
                                 log_event(cfg, f"Bought {sp_buy.get('name','?')} for {price_buy} coins", "coin")
                                 set_status(f"Bought {sp_buy.get('name','?')}! ({int(cfg.get('coins',0))} coins left)")
+                                # Persist immediately so a crash won't lose the new fish
+                                cfg_mod.save(cfg)
+                                cfg_mod.save_fish_state(fish_list)
                             else:
                                 set_status(f"Not enough coins! Need {price_buy}.")
                         elif action_type == "sell":
@@ -589,11 +769,15 @@ def main() -> int:
                                 price_sell = fish_sell_price(fish_to_sell)
                                 scx = tr.left + int(getattr(fish_to_sell, 'x', tr.w // 2))
                                 scy = tr.top  + int(getattr(fish_to_sell, 'y', tr.h // 2))
+                                fish_roster.invalidate_thumb(fish_to_sell)
                                 fish_list.remove(fish_to_sell)
                                 earn_coins(cfg, price_sell, float(scx), float(scy),
                                            coin_popups, log_event,
                                            f"Sold {fish_to_sell.name} for {price_sell} coins")
                                 set_status(f"Sold {fish_to_sell.name} for {price_sell} coins!")
+                                # Persist immediately so a crash won't lose the sale
+                                cfg_mod.save(cfg)
+                                cfg_mod.save_fish_state(fish_list)
                         elif action_type == "restock":
                             restock_cost = action_args[0]
                             if spend_coins(cfg, restock_cost):
@@ -624,16 +808,20 @@ def main() -> int:
                     continue
 
                 if ev.type == pygame.QUIT:
-                    running = False
+                    # Intercept window-close: hide to tray when available
+                    # so the app keeps running. Only actually quit if no tray.
+                    if tray.started:
+                        do_action("tray")
+                    else:
+                        running = False
                 elif ev.type == pygame.KEYDOWN:
                     if ev.key == pygame.K_SPACE:
                         paused = not paused
                     elif ev.key == pygame.K_f:
-                        add_food(env, env.tank_w * 0.5, count=6,
-                                 max_food=int(cfg.get("max_food", 24)))
+                        n = spawn_food_at(env, env.tank_w * 0.5, env.tank_h * 0.3)
+                        set_status(f"Dropped {n} food flakes!")
                     elif ev.key == pygame.K_c:
-                        clean_algae(env)
-                        set_status(f"Scrub! ({int(env.algae)}% algae remaining.)")
+                        do_action("clean")
                     elif ev.key == pygame.K_r:
                         do_action("reset")
                     elif ev.key == pygame.K_e:
@@ -671,10 +859,7 @@ def main() -> int:
                                 n = spawn_food_at(env, ix, iy)
                                 set_status(f"Dropped {n} food flakes!")
                             elif clean_mode:
-                                clean_algae(env)
-                                if env.algae <= 0:
-                                    renderer.reset_algae_overlay()
-                                set_status(f"Scrub! ({int(env.algae)}% algae remaining.)")
+                                do_action("clean")
                             else:
                                 # Chest click (only when open)
                                 chest_coins = chest.handle_click(mx, my)
@@ -685,6 +870,7 @@ def main() -> int:
                                                coin_popups, log_event,
                                                f"Treasure chest! +{chest_coins} coins")
                                     set_status(f"Treasure chest! +{chest_coins} coins!")
+                                    sound.play_coin_chest()
                                 else:
                                     clicked = None
                                     for f in reversed(fish_list):
@@ -695,14 +881,19 @@ def main() -> int:
                                         fish_info.open(clicked, *surface.get_size(),
                                                        mx, my,
                                                        renderer.assets.fish_sheets)
+                                        cfg["stat_profile_opens"] = int(cfg.get("stat_profile_opens", 0)) + 1
                                     else:
                                         # Try popping a bubble (rare coin reward ~1-in-5)
                                         bubble_pos = pop_bubble_at(env, mx, my, tr.left, tr.top)
-                                        if bubble_pos is not None and random.random() < 0.20:
-                                            earn_coins(cfg, 1,
-                                                       float(bubble_pos[0]),
-                                                       float(bubble_pos[1]),
-                                                       coin_popups)
+                                        if bubble_pos is not None:
+                                            cfg["stat_bubbles_popped"] = int(cfg.get("stat_bubbles_popped", 0)) + 1
+                                            sound.play_bubble_pop()
+                                            if random.random() < 0.20:
+                                                earn_coins(cfg, 1,
+                                                           float(bubble_pos[0]),
+                                                           float(bubble_pos[1]),
+                                                           coin_popups)
+                                                sound.play_single_coin()
                         else:
                             # Drag/resize zones (only when not interacting with interior)
                             locked = bool(cfg.get("locked", False))
@@ -730,6 +921,8 @@ def main() -> int:
                             "toggle_top": bool(cfg.get("always_on_top", False)),
                             "toggle_phide": bool(cfg.get("pause_when_hidden", True)),
                             "toggle_names": bool(cfg.get("show_names", False)),
+                            "toggle_moods": bool(cfg.get("show_moods", False)),
+                            "toggle_mute": bool(cfg.get("sound_muted", False)),
                         }
                         for it in items:
                             if it.action in toggles:
@@ -831,10 +1024,12 @@ def main() -> int:
             if should_sim:
                 sim_accum += frame_dt * float(cfg.get("time_scale", 1.0))
                 steps = 0
+                # Compute once per frame; fish rarely die mid-frame, and even
+                # if one does the count being off by 1 for one step is harmless.
+                algae_eater_count = sum(1 for f in fish_list if f.sp.get("algae_eater"))
                 while sim_accum >= sim_dt and steps < 6:
                     sim_accum -= sim_dt
                     steps += 1
-                    algae_eater_count = sum(1 for f in fish_list if f.sp.get("algae_eater"))
                     update_environment(env, sim_dt, cfg, fish_count=len(fish_list),
                                        algae_eater_count=algae_eater_count)
                     for f in fish_list:
@@ -886,15 +1081,15 @@ def main() -> int:
                     for new_f in fish_list[prev_count:]:
                         if new_f.sp.get("super_rare"):
                             log_event(cfg,
-                                      f"[**] A super-rare {new_f.sp['name']} appeared: {new_f.name}!",
+                                      f"[**] An epic {new_f.sp['name']} appeared: {new_f.name}!",
                                       "rare")
-                            unlock(cfg, "super_rare")
-                            unlock(cfg, "rare_encounter")
+                            _fire_achievement("super_rare")
+                            _fire_achievement("rare_encounter")
                         elif new_f.sp.get("rare"):
                             log_event(cfg,
                                       f"[*] A rare {new_f.sp['name']} appeared: {new_f.name}!",
                                       "rare")
-                            unlock(cfg, "rare_encounter")
+                            _fire_achievement("rare_encounter")
 
             # -------- real-time day/night override --------
             if cfg.get("night_cycle", True):
@@ -929,26 +1124,37 @@ def main() -> int:
                 # Run full achievement checks once per minute
                 newly_unlocked = check_achievements(cfg, fish_list)
                 for aid in newly_unlocked:
-                    from src.achievements_panel import ACHIEVEMENTS
-                    name = next((a["name"] for a in ACHIEVEMENTS if a["id"] == aid), aid)
+                    _ach  = next((a for a in ACHIEVEMENTS if a["id"] == aid),
+                                 {"name": aid, "desc": ""})
+                    name  = _ach["name"]
+                    desc  = _ach["desc"]
                     log_event(cfg, f"[*] Achievement unlocked: {name}", "info")
+                    sound.play_achievement()
                     # Award coins for each newly unlocked achievement
                     reward = ACHIEVEMENT_COIN_REWARDS.get(aid, 0)
                     if reward > 0:
                         earn_coins(cfg, reward, float(tr.centerx), float(tr.centery),
                                    coin_popups, log_event,
                                    f"Achievement reward: +{reward} coins")
+                    achievement_popup.push(name, desc, reward)
 
             # Update chest, fish store, and coin popups (every frame)
             burst_positions = chest.update(frame_dt, cfg)
             if burst_positions:
                 spawn_chest_burst(env, burst_positions)
+                sound.play_chest_creak()
             fish_store.update(frame_dt, cfg)
             update_popups(coin_popups, frame_dt)
 
             renderer.tick_animations(frame_dt)
             cursor_mgr.update(frame_dt)
             full_reset_dlg.update(frame_dt)
+            achievement_popup.update(frame_dt)
+            sound.update()
+            sound.set_volume(float(cfg.get("sound_volume", 0.7)))
+            sound.set_muted(bool(cfg.get("sound_muted", False)))
+            # Poll update check result so settings panel can display it
+            settings.update_info = update_check.get_result()
             renderer.food_mode   = food_mode
             renderer.clean_mode  = clean_mode
             roster_mode              = fish_roster.visible
@@ -975,12 +1181,17 @@ def main() -> int:
                           locked=bool(cfg.get("locked", False)),
                           active=True,
                           show_names=bool(cfg.get("show_names", False)),
+                          show_moods=bool(cfg.get("show_moods", False)),
                           scan_lines=bool(cfg.get("scan_lines", True)),
                           stats=stats,
                           sprite_cache=sprite_cache,
                           status_msg=status_msg,
                           chest=chest,
-                          coin_popups=coin_popups)
+                          coin_popups=coin_popups,
+                          encyclopedia_seen=sum(
+                              1 for sp in SPECIES
+                              if is_seen(cfg, sp.get("name", ""))
+                          ))
             context.draw(surface)
             settings.draw(surface)
             fish_roster.draw(surface, fish_list, tr, renderer.assets.fish_sheets)
@@ -994,6 +1205,43 @@ def main() -> int:
             confirm_dlg.draw(surface)
             full_reset_dlg.draw(surface)
             about_dlg.draw(surface)
+            how_to_play.draw(surface)
+            achievement_popup.draw(surface)
+
+            # ── Tooltips ──────────────────────────────────────────
+            tooltip.clear_regions()
+            # Toolbar buttons (fixed positions in left chrome)
+            _tb_tips = [
+                (pygame.Rect(6,  28, 36, 36), "Feed fish  [F]"),
+                (pygame.Rect(6,  68, 36, 36), "Clean algae  [C]"),
+                (pygame.Rect(6, 108, 36, 36), "Fish List"),
+                (pygame.Rect(6, 148, 36, 36), "Event Log"),
+                (pygame.Rect(6, 188, 36, 36), "Achievements"),
+                (pygame.Rect(6, 228, 36, 36), "Encyclopaedia"),
+                (pygame.Rect(6, 268, 36, 36), "Graveyard"),
+                (pygame.Rect(6, 308, 36, 36), "Fish Shoppe"),
+            ]
+            for _r, _t in _tb_tips:
+                tooltip.register(_r, _t)
+            # Title-bar stats (right-aligned area)
+            _w, _h = surface.get_size()
+            tooltip.register(pygame.Rect(_w // 3, 3, _w // 3, 14),
+                             "Fish: living fish in tank")
+            tooltip.register(pygame.Rect(_w * 2 // 3, 3, _w // 6, 14),
+                             "Algae % — clean before it reaches 100%")
+            tooltip.register(pygame.Rect(_w * 5 // 6, 3, _w // 6 - 2, 14),
+                             "Coins — earned from fish care & achievements")
+            # Resize handle (bottom-right corner)
+            tooltip.register(pygame.Rect(_w - 20, _h - 20, 20, 20),
+                             "Drag to resize")
+            # Dynamic panel regions (mood/rarity dots)
+            for _tr_r, _tr_t in fish_roster.tip_regions:
+                tooltip.register(_tr_r, _tr_t)
+            for _tr_r, _tr_t in fish_store.tip_regions:
+                tooltip.register(_tr_r, _tr_t)
+            tooltip.update(frame_dt, pygame.mouse.get_pos())
+            tooltip.draw(surface, renderer.font)
+
             cursor_mgr.draw(surface)
             pygame.display.flip()
 
@@ -1014,7 +1262,15 @@ def main() -> int:
         pygame.quit()
         return 0
     except Exception:
-        logging.getLogger("aquarium").exception("Fatal error in main loop")
+        log = logging.getLogger("aquarium")
+        log.exception("Fatal error in main loop")
+        tb_text = traceback.format_exc()
+        log_path = str(LOG_DIR / "aquarium.log")
+        try:
+            dlg = CrashDialog(tb_text, log_path)
+            dlg.run()
+        except Exception:  # noqa: BLE001 — crash dialog itself failed; just exit
+            pass
         return 1
     finally:
         _release_lock()

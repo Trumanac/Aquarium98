@@ -150,6 +150,12 @@ def _validate(cfg: dict[str, Any]) -> dict[str, Any]:
 
     cfg["bubble_rate"] = max(0.0, min(4.0, float(cfg.get("bubble_rate", 1.0))))
 
+    cfg["castle_choice"] = max(1, min(5, int(cfg.get("castle_choice", 1))))
+    cfg["bg_choice"]     = max(1, min(4, int(cfg.get("bg_choice", 1))))
+    cfg["plant_choice"]  = max(1, min(3, int(cfg.get("plant_choice", 1))))
+
+    cfg["sound_volume"] = max(0.0, min(1.0, float(cfg.get("sound_volume", 0.7))))
+
     cfg["coins"] = max(0, int(cfg.get("coins", 0)))
 
     return cfg

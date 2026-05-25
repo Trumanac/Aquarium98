@@ -11,6 +11,8 @@ Usage::
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pygame
 
 WIN_GRAY  = (192, 192, 192)
@@ -370,11 +372,12 @@ class AboutDialog:
     """
 
     _PW = 300
-    _ICON_PATH = "assets/icon/icon.png"
+    _ICON_PATH = str(Path(__file__).resolve().parent.parent / "assets" / "icon" / "icon.png")
     _ICON_SIZE = 32
 
-    def __init__(self, font: pygame.font.Font) -> None:
+    def __init__(self, font: pygame.font.Font, app_version: str = "1.0.0") -> None:
         self.font    = font
+        self._app_version = app_version
         self.visible = False
         self._rect   = pygame.Rect(0, 0, self._PW, 170)
         self._ok_btn = pygame.Rect(0, 0, _BTN_W, _BTN_H)
@@ -398,7 +401,7 @@ class AboutDialog:
         self._ensure_icon()
         fh  = self.font.get_height()
         row = fh + 4
-        content_h = max(self._ICON_SIZE, row * 4)
+        content_h = max(self._ICON_SIZE, row * 5)
         ph = (_TB_H + 6 + _PAD          # top: title bar + gap + padding
               + content_h               # icon + text rows
               + _PAD + 1 + _PAD         # separator gap + line + gap
@@ -479,10 +482,13 @@ class AboutDialog:
 
         # Text block (right of icon)
         tx = ix + self._ICON_SIZE + 10
-        ty = content_y + (content_h - row * 4) // 2
-        for line in ("Aquarium 98", "Version 1.0", "A living desktop companion.",
-                     "By trumanac"):
-            col = (0, 0, 180) if line.startswith("By ") else (0, 0, 0)
+        ty = content_y + (content_h - row * 5) // 2
+        for line in ("Aquarium 98", f"Version {self._app_version}", "A living desktop companion.",
+                     "By trumanac", "superbirdy.itch.io"):
+            if line.startswith("By ") or line.endswith(".itch.io"):
+                col = (0, 0, 180)
+            else:
+                col = (0, 0, 0)
             ls = fnt.render(line, True, col)
             surface.blit(ls, (tx, ty))
             ty += row
@@ -506,3 +512,159 @@ class AboutDialog:
         ok_s = fnt.render("OK", True, (0, 0, 0))
         surface.blit(ok_s, (self._ok_btn.left + (self._ok_btn.w - ok_s.get_width()) // 2,
                              self._ok_btn.top  + (self._ok_btn.h - ok_s.get_height()) // 2))
+
+
+# ---------------------------------------------------------------------------
+# CrashDialog — fatal-error reporter
+# ---------------------------------------------------------------------------
+
+class CrashDialog:
+    """Win98-style crash-report popup.
+
+    Shows a brief error summary, full traceback, and a *Copy Details* button
+    that copies the report to the clipboard.  Also displays the log file path.
+
+    Attempts to open its own minimal pygame window so it works even when the
+    main window has been destroyed.  Falls back silently on any further error.
+
+    Usage::
+        dlg = CrashDialog(traceback_text, log_path)
+        dlg.run()  # blocks until OK
+    """
+
+    _W, _H = 480, 340
+
+    def __init__(self, tb_text: str, log_path: str) -> None:
+        self._tb   = tb_text
+        self._log  = log_path
+
+    def run(self) -> None:
+        """Open a blocking window, returning when the user dismisses it."""
+        try:
+            self._run()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ------------------------------------------------------------------
+    def _run(self) -> None:
+        import textwrap
+
+        if not pygame.get_init():
+            pygame.init()
+        pygame.display.set_mode((self._W, self._H))
+        pygame.display.set_caption("Aquarium 98 \u2014 Application Error")
+        screen = pygame.display.get_surface()
+        try:
+            font = pygame.font.SysFont("Tahoma", 11)
+        except Exception:  # noqa: BLE001
+            font = pygame.font.Font(None, 14)
+
+        fh  = font.get_height()
+        pad = 8
+        btn_w, btn_h = 90, 22
+
+        ok_rect   = pygame.Rect(self._W - pad - btn_w,     self._H - pad - btn_h, btn_w, btn_h)
+        copy_rect = pygame.Rect(self._W - pad*2 - btn_w*2, self._H - pad - btn_h, btn_w, btn_h)
+
+        copy_available = True
+        try:
+            import pyperclip as _pc  # noqa: F401
+        except ImportError:
+            copy_available = False
+
+        # Wrap traceback text for display
+        lines: list[str] = []
+        for raw_line in self._tb.splitlines():
+            lines.extend(textwrap.wrap(raw_line or " ", width=72) or [" "])
+
+        detail_text = (
+            f"Aquarium 98 crashed unexpectedly.\n\n"
+            f"{self._tb}\n"
+            f"Log file: {self._log}"
+        )
+
+        scroll_y   = 0
+        ok_press   = False
+        copy_press = False
+        running    = True
+        while running:
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    running = False
+                elif ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+                    running = False
+                elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                    if ok_rect.collidepoint(ev.pos):
+                        ok_press = True
+                    if copy_rect.collidepoint(ev.pos) and copy_available:
+                        copy_press = True
+                elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+                    if ok_press and ok_rect.collidepoint(ev.pos):
+                        running = False
+                    if copy_press and copy_rect.collidepoint(ev.pos) and copy_available:
+                        try:
+                            import pyperclip
+                            pyperclip.copy(detail_text)
+                        except Exception:  # noqa: BLE001
+                            pass
+                    ok_press = copy_press = False
+                elif ev.type == pygame.MOUSEWHEEL:
+                    max_scroll = max(0, len(lines) * (fh + 1) - (self._H - 130))
+                    scroll_y   = max(0, min(max_scroll, scroll_y - ev.y * (fh + 1) * 3))
+
+            screen.fill((192, 192, 192))
+
+            # Title bar
+            tb_r = pygame.Rect(3, 3, self._W - 6, 20)
+            for i in range(tb_r.h):
+                blue = int(128 + 80 * (1 - i / max(1, tb_r.h - 1)))
+                pygame.draw.line(screen, (0, 0, blue),
+                                 (tb_r.left, tb_r.top + i),
+                                 (tb_r.right - 1, tb_r.top + i))
+            ts = font.render("Aquarium 98 \u2014 Application Error", True, (255, 255, 255))
+            screen.blit(ts, (tb_r.left + 5, tb_r.top + (tb_r.h - ts.get_height()) // 2))
+
+            # Error message + log path
+            msg_y = tb_r.bottom + pad
+            msg_s = font.render("Aquarium 98 encountered an error and needs to close.", True, (0, 0, 0))
+            screen.blit(msg_s, (pad, msg_y))
+            msg_y += fh + 4
+            log_s = font.render(f"Log: {self._log}", True, (0, 0, 100))
+            screen.blit(log_s, (pad, msg_y))
+            msg_y += fh + 8
+
+            # Traceback text area (sunken box)
+            box_h = self._H - msg_y - btn_h - pad * 3
+            box   = pygame.Rect(pad, msg_y, self._W - pad * 2, box_h)
+            pygame.draw.rect(screen, (255, 255, 255), box)
+            pygame.draw.rect(screen, (128, 128, 128), box, 1)
+            inner = box.inflate(-4, -4)
+            text_area = pygame.Surface((inner.w, inner.h))
+            text_area.fill((255, 255, 255))
+            for i, line in enumerate(lines):
+                y_pos = i * (fh + 1) - scroll_y
+                if -fh <= y_pos <= inner.h:
+                    ls = font.render(line, True, (30, 30, 30))
+                    text_area.blit(ls, (2, y_pos))
+            screen.blit(text_area, (inner.left, inner.top))
+
+            # Buttons
+            if copy_available:
+                pygame.draw.rect(screen, (192, 192, 192), copy_rect)
+                edge = (128, 128, 128) if copy_press else (255, 255, 255)
+                pygame.draw.rect(screen, edge, copy_rect, 1)
+                cs = font.render("Copy Details", True, (0, 0, 0))
+                screen.blit(cs, (copy_rect.left + (copy_rect.w - cs.get_width()) // 2,
+                                 copy_rect.top  + (copy_rect.h - cs.get_height()) // 2))
+
+            pygame.draw.rect(screen, (192, 192, 192), ok_rect)
+            edge = (128, 128, 128) if ok_press else (255, 255, 255)
+            pygame.draw.rect(screen, edge, ok_rect, 1)
+            ok_s2 = font.render("OK", True, (0, 0, 0))
+            screen.blit(ok_s2, (ok_rect.left + (ok_rect.w - ok_s2.get_width()) // 2,
+                                ok_rect.top  + (ok_rect.h - ok_s2.get_height()) // 2))
+
+            pygame.display.flip()
+            pygame.time.delay(16)
+
+        pygame.display.quit()
