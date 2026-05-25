@@ -94,12 +94,18 @@ jobs:
           cache: pip
 
       - name: Install system dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
+          # Stop background auto-updater that often holds the dpkg lock on CI runners
+          sudo systemctl stop unattended-upgrades 2>/dev/null || true
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
-            libglib2.0-dev libgirepository1.0-dev libayatana-appindicator3-dev \
-            fuse libfuse2 file
+          # Only two packages needed:
+          #   libfuse2 — AppImage runtime mount support
+          #   file     — ELF detection used by appimagetool
+          # SDL2/GLib/GIR dev headers are NOT needed: pygame-ce ships a bundled
+          # SDL2 binary wheel, and pystray imports fine without AppIndicator headers.
+          sudo apt-get install -y --no-install-recommends libfuse2 file
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
@@ -111,6 +117,8 @@ jobs:
         run: pyinstaller aquarium98.spec
 
       - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"   # run appimagetool without FUSE mount
         run: |
           VERSION="${{ env.VERSION }}"
           VERSION="${VERSION#v}"   # strip leading 'v'
