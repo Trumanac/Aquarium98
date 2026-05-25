@@ -233,15 +233,18 @@ jobs:
             echo "**Linux:** \`chmod +x Aquarium98-x86_64.AppImage && ./Aquarium98-x86_64.AppImage\`"
           } > /tmp/release_notes.md
 
+          # Delete existing release for this tag so we start with a clean slate.
+          # gh release view returns non-zero if no release exists, so this is safe.
+          if gh release view "$TAG" --json tagName > /dev/null 2>&1; then
+            echo "Deleting existing release for $TAG"
+            gh release delete "$TAG" --yes
+          fi
+
           # Optional --prerelease flag for versions like 1.0.0-beta
           PRERELEASE_FLAG=""
           [[ "$VERSION" == *-* ]] && PRERELEASE_FLAG="--prerelease"
 
-          # --clobber atomically replaces any existing release for this tag,
-          # so re-triggered builds always produce a clean release with exactly
-          # these 4 assets and nothing left over from prior runs.
           gh release create "$TAG" \
-            --clobber \
             --title "Aquarium 98 $VERSION" \
             --notes-file /tmp/release_notes.md \
             $PRERELEASE_FLAG \
