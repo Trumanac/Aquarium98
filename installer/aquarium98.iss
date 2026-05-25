@@ -49,7 +49,7 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 
 ; Installer appearance
 WizardStyle=modern
-WizardSmallImageFile=..\assets\icon\icon.png
+WizardSmallImageFile=..\assets\icon\SplashScreen.png
 SetupIconFile=..\assets\icon\icon.ico
 
 ; Output
