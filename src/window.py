@@ -293,8 +293,18 @@ def get_sdl_window():
         return None
 
 
+def close_button_rect(w: int, h: int) -> "pygame.Rect":
+    """Win98-style close button in the top-right corner of the title bar."""
+    return pygame.Rect(w - 21, 4, 18, 16)
+
+
+def in_close_button(x: int, y: int, w: int, h: int) -> bool:
+    return close_button_rect(w, h).collidepoint(x, y)
+
+
 def in_title_bar(x: int, y: int, w: int, h: int) -> bool:
-    return 0 <= x <= w and 0 <= y <= TITLE_BAR_H
+    # Exclude the close button so clicking it doesn't start a drag.
+    return 0 <= x <= w and 0 <= y <= TITLE_BAR_H and not in_close_button(x, y, w, h)
 
 
 def in_resize_handle(x: int, y: int, w: int, h: int) -> bool:

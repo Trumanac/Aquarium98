@@ -1124,7 +1124,17 @@ class Renderer:
         title = self.font.render("Aquarium 98", True, (255, 255, 255))
         self.surface.blit(title, (8, tb.top + (tb.h - title.get_height()) // 2))
 
-        # Right-aligned stats: "Fish: N   Algae: N%   [coin] N"
+        # Win98-style close button (top-right, red with white X)
+        btn = pygame.Rect(w - 21, 4, 18, 16)
+        pygame.draw.rect(self.surface, (200, 40, 40), btn)
+        _bevel_rect_surf(self.surface, btn, pressed=False)
+        # White X glyph (2 px lines)
+        pygame.draw.line(self.surface, (255, 255, 255),
+                         (btn.left + 4, btn.top + 3),  (btn.right - 5, btn.bottom - 4), 2)
+        pygame.draw.line(self.surface, (255, 255, 255),
+                         (btn.right - 5, btn.top + 3), (btn.left + 4,  btn.bottom - 4), 2)
+
+        # Right-aligned stats: "Fish: N   Algae: N%   [coin] N"  (shifted left to clear the X button)
         stats_str  = f"Fish: {fish_count}   Algae: {algae_pct}%"
         # Abbreviate large coin counts to keep the title bar uncluttered
         if coins >= 1_000_000:
@@ -1137,8 +1147,8 @@ class Renderer:
         coins_surf = self.font.render(coins_str, True, (255, 230, 80))
         stats_surf.set_alpha(220)
         coins_surf.set_alpha(220)
-        # Lay out right-to-left: coin count, then coin icon, then fish/algae
-        coin_count_x = w - 6 - coins_surf.get_width()
+        # Lay out right-to-left starting LEFT of the close button
+        coin_count_x = btn.left - 6 - coins_surf.get_width()
         icon_x = coin_count_x - 12
         stats_x = icon_x - 4 - stats_surf.get_width()
         # Prevent stats overlapping "Aquarium 98" title on narrow windows

@@ -101,6 +101,7 @@ def _setup_logging() -> None:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         handlers=[rotating, logging.StreamHandler(sys.stdout)],
+        force=True,
     )
 
 
@@ -384,6 +385,7 @@ def main() -> int:
         sprite_cache: dict = {}
         tray = Tray(icon_path)
         tray.start()
+        log.info("Tray available=%s started=%s icon_path=%s", tray.available, tray.started, icon_path)
 
         clock = pygame.time.Clock()
         sim_accum = 0.0
@@ -538,6 +540,13 @@ def main() -> int:
                         sdl_win.hide()
                     except Exception:   # noqa: BLE001
                         pass
+                    # One-time balloon so the user knows where the icon lives
+                    if not cfg.get("_tray_notified", False):
+                        cfg["_tray_notified"] = True
+                        tray.notify(
+                            "Aquarium 98 is still running.\n"
+                            "Find it in the system tray  (click ^ on the taskbar)."
+                        )
                 elif sdl_win is not None:
                     # Fallback for platforms/backends without a working tray.
                     # Keep the app discoverable via taskbar/dock.
@@ -818,6 +827,7 @@ def main() -> int:
                 if ev.type == pygame.QUIT:
                     # Intercept window-close: hide to tray when available
                     # so the app keeps running. Only actually quit if no tray.
+                    log.info("QUIT event: tray.started=%s", tray.started)
                     if tray.started:
                         do_action("tray")
                     else:
@@ -910,6 +920,8 @@ def main() -> int:
                                 drag_screen_start = win_mod.get_screen_cursor() if USE_ABS_CURSOR else (mx, my)
                                 drag_orig = surface.get_size()
                                 drag_rel_accum = (0, 0)
+                            elif win_mod.in_close_button(mx, my, *surface.get_size()):
+                                do_action("tray")
                             elif not locked and win_mod.in_title_bar(mx, my, *surface.get_size()):
                                 drag_mode = "move"
                                 if USE_ABS_CURSOR:

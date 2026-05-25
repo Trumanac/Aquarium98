@@ -79,9 +79,20 @@ class Tray:
 
         ready = threading.Event()
 
+        def _setup(icon):
+            # CRITICAL: pystray.Icon does NOT call _show() automatically.
+            # The icon is only registered with the OS tray when .visible is
+            # set to True (which internally calls Shell_NotifyIcon(NIM_ADD)
+            # on Windows, the equivalent on macOS/Linux).
+            try:
+                icon.visible = True
+            except Exception as e:   # noqa: BLE001
+                log.warning("Tray icon visible=True failed: %s", e, exc_info=True)
+            ready.set()
+
         def _run():
             try:
-                self._icon.run(setup=lambda _icon: ready.set())    # type: ignore[union-attr]
+                self._icon.run(setup=_setup)    # type: ignore[union-attr]
             except Exception as e:   # noqa: BLE001
                 log.warning("Tray thread exited: %s", e, exc_info=True)
 
@@ -90,6 +101,9 @@ class Tray:
         self._started = ready.wait(timeout=3.0)
         if not self._started:
             log.warning("Tray backend did not become ready within 3 s; using minimize fallback")
+        else:
+            log.info("Tray backend ready; icon.visible=%s",
+                     getattr(self._icon, "visible", "?"))
 
     def stop(self) -> None:
         if self._icon is not None:
@@ -105,3 +119,11 @@ class Tray:
             return self.actions.get_nowait()
         except queue.Empty:
             return None
+
+    def notify(self, message: str, title: str = "Aquarium 98") -> None:
+        """Show a balloon/native notification via pystray (best-effort)."""
+        if self._icon is not None:
+            try:
+                self._icon.notify(message, title)
+            except Exception:  # noqa: BLE001
+                pass
