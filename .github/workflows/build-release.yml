@@ -187,11 +187,6 @@ jobs:
     permissions:
       contents: write   # required to create releases and upload assets
     steps:
-      - name: Delete existing release for this tag (clean slate)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete "${{ github.ref_name }}" --yes 2>/dev/null || true
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -199,46 +194,58 @@ jobs:
 
       - name: Rename artifacts to stable names (for /releases/latest/download/ links)
         run: |
-          # Rename versioned files to fixed filenames so the README download
-          # links work. Using mv (not cp) means only ONE file per platform
-          # exists — no duplicate versioned + unversioned assets in the release.
+          # mv so only ONE file per platform ends up uploaded (no versioned duplicate)
           find release-artifacts/windows-installer -name "*.exe" | sort | tail -1 \
-            | xargs -I{} mv {} release-artifacts/windows-installer/Aquarium98-Setup.exe
+            | xargs -I{} mv {} release-artifacts/Aquarium98-Setup.exe
           find release-artifacts/linux-appimage -name "*.AppImage" | sort | tail -1 \
-            | xargs -I{} mv {} release-artifacts/linux-appimage/Aquarium98-x86_64.AppImage
+            | xargs -I{} mv {} release-artifacts/Aquarium98-x86_64.AppImage
           find release-artifacts/macos-dmg -name "*.dmg" | sort | tail -1 \
-            | xargs -I{} mv {} release-artifacts/macos-dmg/Aquarium98.dmg
+            | xargs -I{} mv {} release-artifacts/Aquarium98.dmg
 
       - name: Generate SHA256 checksums
         run: |
           cd release-artifacts
-          find . -type f \( -name "*.exe" -o -name "*.AppImage" -o -name "*.dmg" \) \
-            -exec sha256sum {} \; | tee ../SHA256SUMS.txt
-          mv ../SHA256SUMS.txt .
+          sha256sum Aquarium98-Setup.exe Aquarium98-x86_64.AppImage Aquarium98.dmg \
+            | tee SHA256SUMS.txt
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "Aquarium 98 ${{ env.VERSION }}"
-          draft: false
-          prerelease: ${{ contains(env.VERSION, '-') }}
-          generate_release_notes: true
-          body: |
-            | Platform | Download |
-            |----------|----------|
-            | **Windows 10/11** (64-bit) | [Aquarium98-Setup.exe](https://github.com/${{ github.repository }}/releases/latest/download/Aquarium98-Setup.exe) |
-            | **macOS** 10.15+ | [Aquarium98.dmg](https://github.com/${{ github.repository }}/releases/latest/download/Aquarium98.dmg) |
-            | **Linux** (x86_64) | [Aquarium98-x86_64.AppImage](https://github.com/${{ github.repository }}/releases/latest/download/Aquarium98-x86_64.AppImage) |
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${{ env.VERSION }}"
 
-            SHA256 checksums are in `SHA256SUMS.txt`.
+          # Write release body (echo avoids heredoc/backtick escaping issues)
+          {
+            echo "| Platform | Download |"
+            echo "|----------|----------|"
+            echo "| **Windows 10/11** (64-bit) | [Aquarium98-Setup.exe](https://github.com/${REPO}/releases/latest/download/Aquarium98-Setup.exe) |"
+            echo "| **macOS** 10.15+ | [Aquarium98.dmg](https://github.com/${REPO}/releases/latest/download/Aquarium98.dmg) |"
+            echo "| **Linux** (x86_64) | [Aquarium98-x86_64.AppImage](https://github.com/${REPO}/releases/latest/download/Aquarium98-x86_64.AppImage) |"
+            echo ""
+            echo "SHA256 checksums are in \`SHA256SUMS.txt\`."
+            echo ""
+            echo "**Windows:** SmartScreen may warn on first run — click **More info → Run anyway**."
+            echo ""
+            echo "**macOS:** If blocked by Gatekeeper, right-click → **Open**, or run: \`xattr -dr com.apple.quarantine /Applications/Aquarium98.app\`"
+            echo ""
+            echo "**Linux:** \`chmod +x Aquarium98-x86_64.AppImage && ./Aquarium98-x86_64.AppImage\`"
+          } > /tmp/release_notes.md
 
-            **Windows:** SmartScreen may warn on first run — click **More info → Run anyway**.
+          # Optional --prerelease flag for versions like 1.0.0-beta
+          PRERELEASE_FLAG=""
+          [[ "$VERSION" == *-* ]] && PRERELEASE_FLAG="--prerelease"
 
-            **macOS:** If blocked by Gatekeeper, right-click → **Open**, or run: `xattr -dr com.apple.quarantine /Applications/Aquarium98.app`
-
-            **Linux:** `chmod +x Aquarium98-x86_64.AppImage && ./Aquarium98-x86_64.AppImage`
-          files: |
-            release-artifacts/**/*.exe
-            release-artifacts/**/*.AppImage
-            release-artifacts/**/*.dmg
-            release-artifacts/**/SHA256SUMS.txt
+          # --clobber atomically replaces any existing release for this tag,
+          # so re-triggered builds always produce a clean release with exactly
+          # these 4 assets and nothing left over from prior runs.
+          gh release create "$TAG" \
+            --clobber \
+            --title "Aquarium 98 $VERSION" \
+            --notes-file /tmp/release_notes.md \
+            $PRERELEASE_FLAG \
+            release-artifacts/Aquarium98-Setup.exe \
+            release-artifacts/Aquarium98-x86_64.AppImage \
+            release-artifacts/Aquarium98.dmg \
+            release-artifacts/SHA256SUMS.txt
