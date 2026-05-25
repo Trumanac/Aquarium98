@@ -44,10 +44,15 @@ a = Analysis(
     ],
     hiddenimports=[
         # pystray dynamically loads its platform backend at runtime.
+        # Module names confirmed against installed pystray package structure.
         "pystray._base",
-        "pystray.backend.win32",        # Windows (requires pywin32)
-        "pystray.backend.appindicator", # Linux (requires libappindicator)
-        "pystray.backend.darwin",       # macOS (requires PyObjC)
+        "pystray._win32",           # Windows tray backend
+        "pystray._util.win32",      # Win32 helpers
+        "pystray._darwin",          # macOS tray backend
+        "pystray._appindicator",    # Linux (libappindicator)
+        "pystray._gtk",             # Linux (GTK fallback)
+        "pystray._xorg",            # Linux (XOrg fallback)
+        "pystray._dummy",           # No-op fallback
         # Pillow encoders/decoders sometimes missed by the hook
         "PIL.Image",
         "PIL.ImageDraw",
