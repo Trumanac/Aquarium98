@@ -210,8 +210,16 @@ def main() -> int:
         cfg = cfg_mod.load()
         icon_path = ensure_icons()
 
-        # Sync startup registry with the cfg value (on by default for new installs)
-        startup_mod.set_startup(bool(cfg.get("open_on_startup", True)))
+        # Sync startup state.
+        # On first run (first_run flag still true) we read the *actual* registry /
+        # launch-agent state so the in-app setting reflects what the user chose
+        # during installation rather than blindly overwriting it with a default.
+        if cfg.get("first_run", False):
+            cfg["open_on_startup"] = startup_mod.is_startup_enabled()
+            cfg["first_run"] = False
+            cfg_mod.save(cfg)
+        else:
+            startup_mod.set_startup(bool(cfg.get("open_on_startup", False)))
 
         # ── Daily streak ─────────────────────────────────────────────
         today_str = datetime.date.today().isoformat()
@@ -651,7 +659,7 @@ def main() -> int:
                         cfg.update(cfg_mod.validate(cfg))
                         win_mod.set_opacity(sdl_win, cfg.get("opacity", 1.0))
                         win_mod.set_always_on_top(sdl_win, bool(cfg.get("always_on_top", False)))
-                        startup_mod.set_startup(bool(cfg.get("open_on_startup", True)))
+                        startup_mod.set_startup(bool(cfg.get("open_on_startup", False)))
                         cfg_mod.save(cfg)
                     elif result == "reset":
                         cfg.clear()

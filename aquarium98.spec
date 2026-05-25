@@ -53,6 +53,10 @@ a = Analysis(
         "pystray._gtk",             # Linux (GTK fallback)
         "pystray._xorg",            # Linux (XOrg fallback)
         "pystray._dummy",           # No-op fallback
+        # six is a pystray dependency; six.moves is a virtual package that
+        # PyInstaller cannot trace statically — list both explicitly.
+        "six",
+        "six.moves",
         # Pillow encoders/decoders sometimes missed by the hook
         "PIL.Image",
         "PIL.ImageDraw",

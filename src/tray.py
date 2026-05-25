@@ -18,10 +18,12 @@ try:
     from pystray import Menu, MenuItem
     from PIL import Image
     _AVAILABLE = True
+    _IMPORT_ERROR: str | None = None
 except Exception as e:   # noqa: BLE001
-    log.info("pystray unavailable: %s", e)
+    log.warning("pystray unavailable: %s", e, exc_info=True)
     pystray = None      # type: ignore
     _AVAILABLE = False
+    _IMPORT_ERROR = repr(e)
 
 
 class Tray:
@@ -46,11 +48,12 @@ class Tray:
     def start(self) -> None:
         self._started = False
         if not _AVAILABLE:
+            log.warning("Tray not available (pystray import failed: %s)", _IMPORT_ERROR)
             return
         try:
             img = Image.open(self._icon_path)
         except Exception as e:   # noqa: BLE001
-            log.warning("Tray icon load failed: %s", e)
+            log.warning("Tray icon load failed: %s", e, exc_info=True)
             return
 
         def _on(action: str):
@@ -80,13 +83,13 @@ class Tray:
             try:
                 self._icon.run(setup=lambda _icon: ready.set())    # type: ignore[union-attr]
             except Exception as e:   # noqa: BLE001
-                log.warning("Tray thread exited: %s", e)
+                log.warning("Tray thread exited: %s", e, exc_info=True)
 
         self._thread = threading.Thread(target=_run, daemon=True, name="tray")
         self._thread.start()
-        self._started = ready.wait(timeout=1.0)
+        self._started = ready.wait(timeout=3.0)
         if not self._started:
-            log.warning("Tray backend did not become ready; using minimize fallback")
+            log.warning("Tray backend did not become ready within 3 s; using minimize fallback")
 
     def stop(self) -> None:
         if self._icon is not None:
