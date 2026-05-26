@@ -378,8 +378,19 @@ class FishStorePanel:
             surface.blit(name_surf, (col_cx - name_surf.get_width() // 2, name_y))
 
             # ── Rarity tag ────────────────────────────────────────
-            tag = "Uncommon" if slot.species.get("uncommon") else "Common"
-            tag_col = (120, 60, 180) if slot.species.get("uncommon") else (60, 140, 60)
+            _sp_r = slot.species
+            if _sp_r.get("super_rare"):
+                tag = "Epic"
+                tag_col = (180, 70, 240)    # purple
+            elif _sp_r.get("rare"):
+                tag = "Rare"
+                tag_col = (80, 150, 255)    # blue
+            elif _sp_r.get("uncommon"):
+                tag = "Uncommon"
+                tag_col = (60, 210, 80)     # green
+            else:
+                tag = "Common"
+                tag_col = (120, 120, 120)   # gray
             tag_surf = self.font.render(tag, True, tag_col)
             tag_y = slot_y + _LABEL_H
             surface.blit(tag_surf, (col_cx - tag_surf.get_width() // 2, tag_y))
