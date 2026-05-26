@@ -908,6 +908,7 @@ def fish_to_dict(f: Fish) -> dict:
         "frog_timer":       f.frog_timer,
         "graze_wall":       f.graze_wall,
         "graze_angle":      f.graze_angle,
+        "is_grazing":       f.is_grazing,
     }
 
 
@@ -953,4 +954,5 @@ def fish_from_dict(d: dict, tank_w: int, tank_h: int) -> "Fish | None":
     f.frog_timer    = float(d.get("frog_timer", 0.0))
     f.graze_wall    = str(d.get("graze_wall", "bottom"))
     f.graze_angle   = float(d.get("graze_angle", 0.0))
+    f.is_grazing    = bool(d.get("is_grazing", False))
     return f

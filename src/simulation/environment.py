@@ -168,7 +168,8 @@ def spawn_food_at(env: Environment, ix: float, iy: float,
         if not food.active and spawned < count:
             _init_food(food, ix, iy)
             spawned += 1
-    while spawned < count:
+    _FOOD_HARD_CAP = 90  # never exceed 3× the nominal 30-slot pool
+    while spawned < count and len(env.food) < _FOOD_HARD_CAP:
         extra = Food(active=False, layer=target_layer)
         _init_food(extra, ix, iy)
         env.food.append(extra)
@@ -176,8 +177,7 @@ def spawn_food_at(env: Environment, ix: float, iy: float,
     return spawned
 
 
-def add_food(env: Environment, x: float, count: int = 4,
-             max_food: int = 8) -> None:
+def add_food(env: Environment, x: float, count: int = 4) -> None:
     """Backward-compat shim: drop food at interior-x from near the top."""
     spawn_food_at(env, x, 4.0, count)
 

@@ -162,16 +162,19 @@ class SettingsDialog:
             # Sliders checked BEFORE checkboxes: the slider hit-area extends right
             # into the checkbox column, so sliders must win the priority contest.
             for s in self.sliders:
-                hit = s.rect.inflate(6, 14)
+                hit = pygame.Rect(s.rect.left - 6,
+                                  s.rect.top - 7,
+                                  s.rect.w + 12,
+                                  s.rect.h + 14)
                 if hit.collidepoint(ev.pos):
                     self._dragging = s
                     self._set_from_x(s, ev.pos[0])
                     return None
             for c in self.checks:
-                # Extend hitbox rightward only (covers the label text).
-                # inflate() expands both sides equally, so build the rect manually
-                # to avoid the left edge bleeding into the slider area.
-                hit = pygame.Rect(c.rect.left, c.rect.top - 2, 185, c.rect.h + 4)
+                # Extend hitbox across the label text and to the panel edge.
+                hit_width = max(185, self._panel.right - c.rect.left - 14)
+                hit = pygame.Rect(c.rect.left, c.rect.top - 2,
+                                  hit_width, c.rect.h + 4)
                 if hit.collidepoint(ev.pos):
                     self.cfg_edit[c.key] = not bool(self.cfg_edit.get(c.key, False))
                     return None

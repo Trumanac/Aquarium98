@@ -54,6 +54,8 @@ def log_death(cfg: dict, fish) -> None:
     }
     graveyard: list = cfg.get("graveyard") or []
     graveyard.append(record)
+    if len(graveyard) > 200:
+        graveyard = graveyard[-200:]
     cfg["graveyard"] = graveyard
 
 

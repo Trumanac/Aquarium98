@@ -16,11 +16,22 @@ from __future__ import annotations
 
 from pathlib import Path
 import pathlib
+import sys
 from typing import Callable
 
 import pygame
 
-# ── Win98 palette ────────────────────────────────────────────────────────────
+# -- Font cache (SysFont is expensive; only create each variant once) -----------
+_font_cache: dict = {}
+
+
+def _get_bold_font(size: int) -> pygame.font.Font:
+    if size not in _font_cache:
+        _font_cache[size] = pygame.font.SysFont("ms sans serif,arial", size, bold=True)
+    return _font_cache[size]
+
+
+# -- Win98 palette ------------------------------------------------------------------
 WIN_GRAY   = (192, 192, 192)
 WIN_LIGHT  = (255, 255, 255)
 WIN_DARK   = (64,  64,  64)
@@ -200,9 +211,27 @@ def _draw_mouse(surf: pygame.Surface, x: int, y: int,
 
 
 # ── Real-sprite helpers ───────────────────────────────────────────────────────
-_SPRITES_DIR = pathlib.Path(__file__).resolve().parent.parent / "assets" / "sprites"
-_PROJ_DIR    = pathlib.Path(__file__).resolve().parent.parent
+# Resolve project/bundle root — works both from source and in a PyInstaller
+# onedir bundle where sys._MEIPASS is the extracted data directory.
+_PROJ_DIR: pathlib.Path = (
+    pathlib.Path(sys._MEIPASS)                       # frozen bundle
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+    else pathlib.Path(__file__).resolve().parent.parent  # dev / source run
+)
+_SPRITES_DIR = _PROJ_DIR / "assets" / "sprites"
 _sprite_cache: dict = {}
+
+
+def _load_raw_image(path: pathlib.Path) -> "pygame.Surface | None":
+    """Load and cache a raw (unscaled) image surface; returns None on failure."""
+    key = f"raw:{path}"
+    if key not in _sprite_cache:
+        try:
+            import pygame as _pg
+            _sprite_cache[key] = _pg.image.load(str(path)).convert()
+        except Exception:
+            _sprite_cache[key] = None
+    return _sprite_cache[key]
 
 
 def _scale_fit(surf, max_w: int, max_h: int):
@@ -303,9 +332,8 @@ def _page_welcome(surf: pygame.Surface, r: pygame.Rect,
                   font: pygame.font.Font) -> None:
     # Banner — official Aquarium 98 splash screen, scaled to fill full width
     banner = pygame.Rect(r.left, r.top, r.w, max(70, r.h // 3))
-    try:
-        import pygame as _pg
-        _sp = _pg.image.load(str(_PROJ_DIR / "assets" / "icon" / "SplashScreen.png")).convert_alpha()
+    _sp = _load_raw_image(_PROJ_DIR / "assets" / "icon" / "SplashScreen.png")
+    if _sp is not None:
         _sp_w, _sp_h = _sp.get_size()
         # Scale to full panel width; derive height from aspect ratio
         _natural_h = int(r.w * _sp_h / max(1, _sp_w))
@@ -313,11 +341,11 @@ def _page_welcome(surf: pygame.Surface, r: pygame.Rect,
         _banner_h = max(70, min(_natural_h, r.h - 55))
         banner = pygame.Rect(r.left, r.top, r.w, _banner_h)
         pygame.draw.rect(surf, (18, 50, 90), banner)
-        _sp_scaled = _pg.transform.smoothscale(_sp, (r.w, _natural_h))
+        _sp_scaled = pygame.transform.smoothscale(_sp, (r.w, _natural_h))
         # Vertically centre-crop into banner
         _sy = banner.top - max(0, (_natural_h - _banner_h) // 2)
         surf.blit(_sp_scaled, (banner.left, _sy))
-    except Exception:
+    else:
         pygame.draw.rect(surf, WATER_BG, banner)
     _bevel(surf, banner, pressed=True)
     # Body
@@ -337,7 +365,7 @@ def _page_welcome(surf: pygame.Surface, r: pygame.Rect,
 def _page_controls(surf: pygame.Surface, r: pygame.Rect,
                    font: pygame.font.Font) -> None:
     # Header
-    big = pygame.font.SysFont("ms sans serif,arial", 14, bold=True)
+    big = _get_bold_font(14)
     surf.blit(big.render("Controls at a glance", True, ACCENT),
               (r.left + 4, r.top + 2))
 
@@ -374,7 +402,7 @@ def _page_controls(surf: pygame.Surface, r: pygame.Rect,
 
 def _page_feed_clean(surf: pygame.Surface, r: pygame.Rect,
                      font: pygame.font.Font) -> None:
-    big = pygame.font.SysFont("ms sans serif,arial", 14, bold=True)
+    big = _get_bold_font(14)
     surf.blit(big.render("Feeding & cleaning", True, ACCENT),
               (r.left + 4, r.top + 2))
 
@@ -383,8 +411,10 @@ def _page_feed_clean(surf: pygame.Surface, r: pygame.Rect,
     _demo_w = r.w - 8
     _max_demo_h = r.h - 106   # reserve space for title (22px) + gap + text (~84px)
     _demo_img = None
-    try:
-        _raw = pygame.image.load(str(_PROJ_DIR / "screenshots" / "screenshot_feed.png")).convert()
+    _raw = _load_raw_image(_PROJ_DIR / "screenshots" / "screenshot_feed.png")
+    if _raw is None:
+        _raw = _load_raw_image(_PROJ_DIR / "docs" / "screenshot2.png")
+    if _raw is not None:
         _iw, _ih = _raw.get_size()
         _natural_h = max(1, int(_demo_w * _ih / max(1, _iw)))
         if _natural_h <= _max_demo_h:
@@ -395,14 +425,6 @@ def _page_feed_clean(surf: pygame.Surface, r: pygame.Rect,
             _src_crop_h = max(1, int(_ih * _max_demo_h / _natural_h))
             _crop = _raw.subsurface(pygame.Rect(0, 0, _iw, min(_src_crop_h, _ih))).copy()
             _demo_img = pygame.transform.smoothscale(_crop, (_demo_w, _max_demo_h))
-    except Exception:
-        pass
-    if _demo_img is None:
-        try:
-            _raw2 = pygame.image.load(str(_PROJ_DIR / "docs" / "screenshot2.png")).convert()
-            _demo_img = _scale_fit(_raw2, _demo_w, _max_demo_h)
-        except Exception:
-            pass
 
     _demo_h = _demo_img.get_height() if _demo_img else max(100, _max_demo_h // 2)
     demo = pygame.Rect(r.left + 4, r.top + 22, _demo_w, _demo_h)
@@ -428,7 +450,7 @@ def _page_feed_clean(surf: pygame.Surface, r: pygame.Rect,
 
 def _page_mood_rarity(surf: pygame.Surface, r: pygame.Rect,
                       font: pygame.font.Font) -> None:
-    big = pygame.font.SysFont("ms sans serif,arial", 14, bold=True)
+    big = _get_bold_font(14)
     surf.blit(big.render("Fish Mood & Rarity", True, ACCENT),
               (r.left + 4, r.top + 2))
 
@@ -474,7 +496,7 @@ def _page_mood_rarity(surf: pygame.Surface, r: pygame.Rect,
 
 def _page_coins(surf: pygame.Surface, r: pygame.Rect,
                 font: pygame.font.Font) -> None:
-    big = pygame.font.SysFont("ms sans serif,arial", 14, bold=True)
+    big = _get_bold_font(14)
     surf.blit(big.render("Coins, treasure & the Fish Shoppe", True, ACCENT),
               (r.left + 4, r.top + 2))
 
@@ -528,7 +550,7 @@ def _page_coins(surf: pygame.Surface, r: pygame.Rect,
 
 def _page_panels(surf: pygame.Surface, r: pygame.Rect,
                  font: pygame.font.Font) -> None:
-    big = pygame.font.SysFont("ms sans serif,arial", 14, bold=True)
+    big = _get_bold_font(14)
     surf.blit(big.render("The toolbar panels", True, ACCENT),
               (r.left + 4, r.top + 2))
 
@@ -560,24 +582,21 @@ def _page_panels(surf: pygame.Surface, r: pygame.Rect,
 
 def _page_window(surf: pygame.Surface, r: pygame.Rect,
                  font: pygame.font.Font) -> None:
-    big = pygame.font.SysFont("ms sans serif,arial", 14, bold=True)
+    big = _get_bold_font(14)
     surf.blit(big.render("Living on your desktop", True, ACCENT),
               (r.left + 4, r.top + 2))
 
     # Screenshot crop: top 45% of the actual app (title bar + fish list + tank top)
     win_r = pygame.Rect(r.left + 4, r.top + 24, r.w - 8, 80)
     _win_bg = None
-    try:
-        import pygame as _pg
-        _ss1 = _pg.image.load(str(_PROJ_DIR / "screenshots" / "01_active_tank.png")).convert()
+    _ss1 = _load_raw_image(_PROJ_DIR / "screenshots" / "01_active_tank.png")
+    if _ss1 is not None:
         _sw1, _sh1 = _ss1.get_size()
         _crop_h1 = int(_sh1 * 0.46)
         _win_bg = pygame.transform.smoothscale(
             _ss1.subsurface(pygame.Rect(0, 0, _sw1, _crop_h1)).copy(),
             (win_r.w, win_r.h)
         )
-    except Exception:
-        pass
     if _win_bg:
         surf.blit(_win_bg, win_r.topleft)
     else:
@@ -600,7 +619,7 @@ def _page_window(surf: pygame.Surface, r: pygame.Rect,
 
 def _page_tips(surf: pygame.Surface, r: pygame.Rect,
                font: pygame.font.Font) -> None:
-    big = pygame.font.SysFont("ms sans serif,arial", 14, bold=True)
+    big = _get_bold_font(14)
     surf.blit(big.render("Tips for happy fish", True, ACCENT),
               (r.left + 4, r.top + 2))
 
@@ -645,7 +664,7 @@ def _page_tips(surf: pygame.Surface, r: pygame.Rect,
 def _page_shortcuts(surf: pygame.Surface, r: pygame.Rect,
                     font: pygame.font.Font) -> None:
     """Quick Reference — keyboard shortcuts and mouse controls cheat sheet."""
-    big = pygame.font.SysFont("ms sans serif,arial", 14, bold=True)
+    big = _get_bold_font(14)
     surf.blit(big.render("Quick Reference", True, ACCENT),
               (r.left + 4, r.top + 2))
 
@@ -655,7 +674,7 @@ def _page_shortcuts(surf: pygame.Surface, r: pygame.Rect,
     fh   = font.get_height()
 
     # ----- Keyboard shortcuts (2-column grid, 3 keys per column) -----
-    sub = pygame.font.SysFont("ms sans serif,arial", 11, bold=True)
+    sub = _get_bold_font(11)
     surf.blit(sub.render("Keyboard", True, WIN_DARK), (r.left + 4, y))
     y += sub.get_height() + 2
 

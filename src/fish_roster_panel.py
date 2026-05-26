@@ -39,6 +39,7 @@ class FishRosterPanel:
         # Thumbnail cache: fish id → small Surface
         self._thumb_cache: dict[int, pygame.Surface] = {}
         # Surface caches for semi-transparent overlays (avoid per-frame alloc)
+        self._close_btn  = pygame.Rect(0, 0, 0, 0)
         self._overlay: pygame.Surface | None = None
         self._overlay_size = (0, 0)
         self._row_bg_normal: pygame.Surface | None = None

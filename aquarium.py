@@ -14,6 +14,7 @@ Pipeline:
 from __future__ import annotations
 
 import datetime
+import atexit
 import logging
 import logging.handlers
 import math
@@ -468,6 +469,29 @@ def main() -> int:
             cfg["opacity"] = max(0.30, min(1.0, value))
             win_mod.set_opacity(sdl_win, cfg["opacity"])
 
+        def _persist_state_now() -> None:
+            """Save config (inc. window position) and fish state immediately.
+
+            Called before hiding to tray and on pygame.QUIT so that a forced
+            OS shutdown (Windows WM_ENDSESSION / SIGTERM) never loses session
+            data between the 2-second periodic saves.
+            """
+            try:
+                pos = win_mod.get_position(sdl_win)
+                if pos is not None:
+                    cfg["window_x"], cfg["window_y"] = pos
+                _w, _h = surface.get_size()
+                cfg["window_w"], cfg["window_h"] = _w, _h
+                cfg_mod.save(cfg)
+                if cfg.get("persist_state", True):
+                    cfg_mod.save_fish_state(fish_list)
+            except Exception:  # noqa: BLE001
+                log.warning("_persist_state_now: save failed", exc_info=True)
+
+        # Register as a last-resort save on normal Python exit (sys.exit,
+        # unhandled exception propagating out of main, etc.).
+        atexit.register(_persist_state_now)
+
         def do_action(action: str):
             nonlocal paused, hidden, running, fish_list, env, sprite_cache, _pending_reset, roster_mode, food_mode, clean_mode
             if action == "quit":
@@ -575,6 +599,7 @@ def main() -> int:
                 close_all_overlays(except_one="graveyard")
                 graveyard_panel.toggle()
             elif action == "tray":
+                _persist_state_now()  # always flush before hiding — covers OS shutdown
                 if tray.started and sdl_win is not None:
                     hidden = True
                     try:
@@ -604,6 +629,7 @@ def main() -> int:
                     except Exception:   # noqa: BLE001
                         pass
             elif action == "hide":
+                _persist_state_now()  # always flush before hiding — covers OS shutdown
                 if tray.started and sdl_win is not None:
                     hidden = True
                     try:
@@ -633,8 +659,9 @@ def main() -> int:
             frame_dt = now - last_t
             last_t = now
 
-            # Periodic config save (for window position/size)
-            if now - last_pos_save > 5.0:
+            # Periodic config save (for window position/size) — every 2 s so
+            # at most 2 s of state is lost on an unexpected process kill.
+            if now - last_pos_save > 2.0:
                 pos = win_mod.get_position(sdl_win)
                 if pos is not None:
                     cfg["window_x"], cfg["window_y"] = pos
@@ -886,8 +913,10 @@ def main() -> int:
                         continue
 
                 if ev.type == pygame.QUIT:
-                    # Intercept window-close: hide to tray when available
-                    # so the app keeps running. Only actually quit if no tray.
+                    # Always persist immediately — Windows WM_QUERYENDSESSION
+                    # arrives as QUIT and the OS may force-kill the process
+                    # seconds later, bypassing the normal shutdown block.
+                    _persist_state_now()
                     log.info("QUIT event: tray.started=%s", tray.started)
                     if tray.started:
                         do_action("tray")
@@ -950,29 +979,30 @@ def main() -> int:
                                     set_status(f"Treasure chest! +{chest_coins} coins!")
                                     sound.play_coin_chest()
                                 else:
-                                    clicked = None
-                                    for f in reversed(fish_list):
-                                        if fish_screen_rect(f, tr).collidepoint(mx, my):
-                                            clicked = f
-                                            break
-                                    if clicked is not None:
-                                        close_all_overlays(except_one="fish_info")
-                                        fish_info.open(clicked, *surface.get_size(),
-                                                       mx, my,
-                                                       renderer.assets.fish_sheets)
-                                        cfg["stat_profile_opens"] = int(cfg.get("stat_profile_opens", 0)) + 1
+                                    # Bubbles should take priority over fish profile clicks.
+                                    # If a bubble is under the cursor, pop it first.
+                                    bubble_pos = pop_bubble_at(env, mx, my, tr.left, tr.top)
+                                    if bubble_pos is not None:
+                                        cfg["stat_bubbles_popped"] = int(cfg.get("stat_bubbles_popped", 0)) + 1
+                                        sound.play_bubble_pop()
+                                        if random.random() < 0.20:
+                                            earn_coins(cfg, 1,
+                                                       float(bubble_pos[0]),
+                                                       float(bubble_pos[1]),
+                                                       coin_popups)
+                                            sound.play_single_coin()
                                     else:
-                                        # Try popping a bubble (rare coin reward ~1-in-5)
-                                        bubble_pos = pop_bubble_at(env, mx, my, tr.left, tr.top)
-                                        if bubble_pos is not None:
-                                            cfg["stat_bubbles_popped"] = int(cfg.get("stat_bubbles_popped", 0)) + 1
-                                            sound.play_bubble_pop()
-                                            if random.random() < 0.20:
-                                                earn_coins(cfg, 1,
-                                                           float(bubble_pos[0]),
-                                                           float(bubble_pos[1]),
-                                                           coin_popups)
-                                                sound.play_single_coin()
+                                        clicked = None
+                                        for f in reversed(fish_list):
+                                            if fish_screen_rect(f, tr).collidepoint(mx, my):
+                                                clicked = f
+                                                break
+                                        if clicked is not None:
+                                            close_all_overlays(except_one="fish_info")
+                                            fish_info.open(clicked, *surface.get_size(),
+                                                           mx, my,
+                                                           renderer.assets.fish_sheets)
+                                            cfg["stat_profile_opens"] = int(cfg.get("stat_profile_opens", 0)) + 1
                         else:
                             # Drag/resize zones (only when not interacting with interior)
                             locked = bool(cfg.get("locked", False))
