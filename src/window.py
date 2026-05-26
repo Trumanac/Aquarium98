@@ -272,7 +272,38 @@ def set_position(sdl_win, x: int, y: int) -> None:
         log.debug("set_position failed: %s", e)
 
 
-def resize_surface(w: int, h: int) -> pygame.Surface:
+def set_window_size(sdl_win, w: int, h: int) -> None:
+    """Resize the native OS window without touching the pygame surface.
+
+    This is step-1 of a flash-free resize: it moves the OS window to the new
+    size and queues a ``pygame.WINDOWRESIZED`` event, but does NOT call
+    ``set_mode()`` or touch the renderer.  The caller should:
+      1. Call this function.
+      2. Call ``pygame.event.pump()`` to flush the SDL event.
+      3. Drain the queued ``WINDOWRESIZED`` via ``pygame.event.get(pygame.WINDOWRESIZED)``.
+      4. Call ``resize_surface(w, h)`` — because the SDL window already has the
+         target size, ``set_mode()`` only updates the renderer in-place instead
+         of recreating the window, so there is no black flash and no grab loss.
+    """
+    if sdl_win is None:
+        return
+    w = max(MIN_W, min(MAX_W, int(w)))
+    h = max(MIN_H, min(MAX_H, int(h)))
+    try:
+        sdl_win.size = (w, h)
+    except Exception as e:   # noqa: BLE001
+        log.debug("set_window_size failed: %s", e)
+
+
+def resize_surface(w: int, h: int, sdl_win=None) -> pygame.Surface:
+    """Resize the pygame display surface to (w, h).
+
+    For a smooth, flash-free resize call ``set_window_size(sdl_win, w, h)``
+    first so the SDL window already has the target dimensions.  When
+    ``set_mode()`` is called and the SDL window is already at (w, h), SDL2
+    updates the renderer backing-store in-place instead of recreating the
+    window — eliminating the black-flash and preserving event-grab state.
+    """
     w = max(MIN_W, min(MAX_W, int(w)))
     h = max(MIN_H, min(MAX_H, int(h)))
     return pygame.display.set_mode((w, h), pygame.NOFRAME | pygame.RESIZABLE)
@@ -299,13 +330,13 @@ def close_button_rect(w: int, h: int) -> "pygame.Rect":
 
 
 def in_close_button(x: int, y: int, w: int, h: int) -> bool:
-    return close_button_rect(w, h).collidepoint(x, y)
+    return close_button_rect(w, h).inflate(8, 8).collidepoint(x, y)
 
 
 def in_title_bar(x: int, y: int, w: int, h: int) -> bool:
     # Exclude the close button so clicking it doesn't start a drag.
-    return 0 <= x <= w and 0 <= y <= TITLE_BAR_H and not in_close_button(x, y, w, h)
+    return 0 <= x < w and 0 <= y < TITLE_BAR_H and not in_close_button(x, y, w, h)
 
 
 def in_resize_handle(x: int, y: int, w: int, h: int) -> bool:
-    return (w - RESIZE_HANDLE) <= x <= w and (h - RESIZE_HANDLE) <= y <= h
+    return (w - RESIZE_HANDLE) <= x < w and (h - RESIZE_HANDLE) <= y < h

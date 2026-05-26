@@ -814,7 +814,7 @@ class HowToPlayPanel:
 
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
             pos = ev.pos
-            if self._close_btn.collidepoint(pos):
+            if self._close_btn.inflate(8, 8).collidepoint(pos):
                 self._close_press = True; return None
             if self._back_btn.collidepoint(pos) and self._page > 0:
                 self._back_press = True;  return None
@@ -828,7 +828,7 @@ class HowToPlayPanel:
                     self._page = i
                     return None
             # Drag from title bar
-            if self._title_bar.collidepoint(pos) and not self._close_btn.collidepoint(pos):
+            if self._title_bar.collidepoint(pos) and not self._close_btn.inflate(8, 8).collidepoint(pos):
                 self._dragging = True
                 self._drag_offset = (pos[0] - self._rect.left,
                                      pos[1] - self._rect.top)
@@ -840,7 +840,7 @@ class HowToPlayPanel:
         if ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
             pos = ev.pos
             self._dragging = False
-            if self._close_press and self._close_btn.collidepoint(pos):
+            if self._close_press and self._close_btn.inflate(8, 8).collidepoint(pos):
                 self._close_press = False
                 self.close(); return "closed"
             if self._back_press and self._back_btn.collidepoint(pos):

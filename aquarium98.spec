@@ -142,8 +142,8 @@ if sys.platform == "darwin":
         bundle_identifier="com.trumanac.aquarium98",
         info_plist={
             "CFBundleDisplayName":     "Aquarium 98",
-            "CFBundleShortVersionString": "1.0.4",
-            "CFBundleVersion":         "1.0.4",
+            "CFBundleShortVersionString": "1.0.5",
+            "CFBundleVersion":         "1.0.5",
             "NSHighResolutionCapable": True,
             "NSPrincipalClass":        "NSApplication",
             "NSAppleScriptEnabled":    False,

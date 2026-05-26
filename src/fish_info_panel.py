@@ -203,31 +203,32 @@ class FishInfoPanel:
             return None
 
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-            # X button
-            if self._close_btn.collidepoint(ev.pos):
-                self.close(); return "close"
+            # X button — inflated hitbox for easier clicking
+            if self._close_btn.inflate(8, 8).collidepoint(ev.pos):
+                self.close(); return "close_inside"
             # Bottom buttons
-            if self._close2_btn.collidepoint(ev.pos):
-                self.close(); return "close"
-            if self._save_btn.collidepoint(ev.pos):
+            if self._close2_btn.inflate(0, 8).collidepoint(ev.pos):
+                self.close(); return "close_inside"
+            if self._save_btn.inflate(0, 8).collidepoint(ev.pos):
                 old_name = self.fish.name if self.fish else ""
                 self._apply_rename()
                 new_name = self.fish.name if self.fish else ""
                 self.close()
-                return "renamed" if new_name != old_name else "close"
+                return "renamed" if new_name != old_name else "close_inside"
             # Name input activate
             if self._input_rect.collidepoint(ev.pos):
-                self._rename_active = True; return None
+                self._rename_active = True; return True
             # Title bar → start drag
             if self._title_bar.collidepoint(ev.pos):
                 self._dragging    = True
                 self._drag_offset = (ev.pos[0] - self._rect.left,
                                      ev.pos[1] - self._rect.top)
-                return None
+                return True
             # Click outside panel → close
             if not self._rect.collidepoint(ev.pos):
-                self.close(); return "close"
+                self.close(); return "close_outside"
             self._rename_active = False
+            return True
 
         elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
             self._dragging = False

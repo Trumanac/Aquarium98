@@ -74,15 +74,20 @@ class FishRosterPanel:
             return None
 
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-            # Close button (top-right of panel header)
-            if self._close_btn.collidepoint(ev.pos):
+            # Close button (top-right of panel header) — inflated hitbox
+            if self._close_btn.inflate(8, 8).collidepoint(ev.pos):
                 self.close()
-                return None
+                return True
             row = self._row_at(ev.pos)
             if row is not None:
                 idx = self._scroll + row
                 if 0 <= idx < len(fish_list):
                     return idx
+                return True
+            if self._rect.collidepoint(ev.pos):
+                return True
+            self.close()
+            return None
         return None
 
     def _row_at(self, pos: tuple[int, int]) -> int | None:
@@ -128,8 +133,8 @@ class FishRosterPanel:
         surface.blit(htxt, (hbar.left + 5,
                              hbar.top + (header_h - htxt.get_height()) // 2))
 
-        # Close (×) button
-        self._close_btn = pygame.Rect(hbar.right - 16, hbar.top + 3, 12, 14)
+        # Close (×) button — widen to 18 px to match other panels
+        self._close_btn = pygame.Rect(hbar.right - 20, hbar.top + 3, 16, 14)
         pygame.draw.rect(surface, (180, 80, 80), self._close_btn)
         xs = self.font.render("x", True, WIN_LIGHT)
         surface.blit(xs, (self._close_btn.left + (self._close_btn.w - xs.get_width()) // 2,

@@ -9,6 +9,51 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.5] — 2026-05-25
+
+### Fixed
+- **Drag-to-move / drag-to-resize completely broken on Windows** — `GetCursorPos`
+  (via ctypes) was always returning the fixed screen-centre coordinates `(1280, 720)`
+  on a 2560×1440 display, regardless of actual cursor position.  Removed the
+  broken `USE_ABS_CURSOR` / `get_screen_cursor()` path entirely; all platforms
+  now use `ev.rel` accumulation with `pygame.event.clear(MOUSEMOTION)` after each
+  `set_position()` call to suppress SDL feedback events.
+- `pygame.event.clear(MOUSEMOTION)` also added in the `WINDOWRESIZED` handler so
+  spurious events queued by `resize_surface()` do not corrupt the resize accumulator.
+- `in_title_bar` and `in_resize_handle` boundary conditions corrected (`<` instead
+  of `<=`) to avoid off-by-one at window edges.
+- **Breeding offspring downgraded to common** — rare/uncommon fish now breed true;
+  offspring are always the same species as the parents.
+- **Food clicks silently dropped** when all food slots were active; `spawn_food_at`
+  now dynamically expands the slot list so no click is ever lost.
+- **Custom cursor hotspots** re-measured after sprite rescaling; glove, food-shaker,
+  and cleaning-sponge cursors now track the pointer accurately.
+
+### Changed
+- **Fish Shoppe rarity overhaul** — each slot is rolled independently:
+  ~1 % epic, ~5 % rare, ~16 % uncommon, ~78 % common.  Prices updated:
+  Common 10–30 · Uncommon 40–90 · Rare 200–350 · Epic 600–900 coins.
+- Toolbar geometry extracted into named constants (`TB_BTN_X`, `TB_BTN_Y_START`,
+  `TB_BTN_SIZE`, `TB_BTN_SPACING`, `TB_BTN_KEYS`) and a helper `toolbar_button_rect(key)`.
+- `_draw_toolbar` refactored to iterate `TB_BTN_KEYS` instead of hard-coded coordinates.
+- `set_window_size(sdl_win, w, h)` added to `window.py` for OS-level resize without
+  touching the pygame surface (step-1 of flash-free resize).
+
+### UI Polish
+- All panel close buttons have hitboxes inflated by 8 px for easier clicking.
+- Clicking outside an open panel (Achievements, Encyclopaedia, Event Log, Graveyard)
+  now closes it.
+- `FishRosterPanel`: close button returns `True`; row click returns fish index;
+  click outside panel closes it.
+- `FishInfoPanel`: returns `"close_inside"` vs `"close_outside"` so callers can
+  distinguish dismissal source.
+- `ContextMenu.handle_event` returns a proper bool for `MOUSEMOTION` and
+  `MOUSEBUTTONDOWN` (correct event-consumption contract).
+- `ConfirmDialog`, `SettingsDialog`, and `FishStorePanel` buttons all have
+  inflated hitboxes; store returns `("consume",)` tuple on handled events.
+
+---
+
 ## [1.0.4] — 2026-05-25
 
 ### Added
@@ -133,7 +178,8 @@ elusive Moonshell Hermit (Epic) is a tank highlight when it appears.
 
 ---
 
-[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.5...HEAD
+[1.0.5]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.5
 [1.0.4]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.4
 [1.0.3]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.3
 [1.0.2]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.2

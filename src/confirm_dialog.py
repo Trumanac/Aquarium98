@@ -103,15 +103,15 @@ class ConfirmDialog:
         if not self.visible:
             return None
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-            if self._yes_btn.collidepoint(ev.pos):
+            if self._yes_btn.inflate(8, 8).collidepoint(ev.pos):
                 self._yes_press = True
-            elif self._no_btn.collidepoint(ev.pos):
+            elif self._no_btn.inflate(8, 8).collidepoint(ev.pos):
                 self._no_press = True
         elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
-            if self._yes_press and self._yes_btn.collidepoint(ev.pos):
+            if self._yes_press and self._yes_btn.inflate(8, 8).collidepoint(ev.pos):
                 self.close()
                 return "yes"
-            if self._no_press and self._no_btn.collidepoint(ev.pos):
+            if self._no_press and self._no_btn.inflate(8, 8).collidepoint(ev.pos):
                 self.close()
                 return "no"
             self._yes_press = False

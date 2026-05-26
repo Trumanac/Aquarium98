@@ -29,7 +29,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.4"
+    APP_VERSION = "1.0.5"
 
 import pygame
 
@@ -45,7 +45,10 @@ from src import config as cfg_mod
 from src import window as win_mod
 from src.context_menu import ContextMenu, feed_menu
 from src.icon_gen import ensure_icons
-from src.renderer import Renderer, PAD_B, fish_screen_rect
+from src.renderer import (
+    Renderer, PAD_B, fish_screen_rect,
+    toolbar_button_rect,
+)
 from src.settings_dialog import SettingsDialog
 from src.confirm_dialog import ConfirmDialog, FullResetDialog, AboutDialog, CrashDialog
 from src.how_to_play_panel import HowToPlayPanel
@@ -92,7 +95,7 @@ IS_WINDOWS = platform.system() == "Windows"
 
 
 def _setup_logging() -> None:
-    LOG_DIR.mkdir(exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     logfile = LOG_DIR / "aquarium.log"
     rotating = logging.handlers.RotatingFileHandler(
         logfile, maxBytes=500_000, backupCount=3, encoding="utf-8"
@@ -402,8 +405,7 @@ def main() -> int:
         roster_mode = False
         store_mode  = False
         stat_accum  = 0.0   # real-time seconds; flushed to cfg every minute
-        last_resize_t = 0.0  # perf_counter timestamp of last resize drag movement
-        pending_resize: tuple[int, int] | None = None  # target size waiting to be applied
+        # Resize is applied immediately on drag so the window size updates smoothly.
         # Streak display: show on first frame
         _streak_display = f"Day {streak} streak ><>" if streak > 1 else ""
         status_msg   = _welcome_back_msg or _streak_display or "Aquarium 98 ready."
@@ -437,6 +439,31 @@ def main() -> int:
         _tip_idx      = -1    # cycles through _TIPS sequentially
 
         # --- helpers ---
+        def close_all_overlays(except_one: str | None = None) -> None:
+            nonlocal roster_mode, store_mode
+            if except_one != "roster":
+                fish_roster.close()
+                roster_mode = False
+            if except_one != "event_log":
+                event_log.close()
+            if except_one != "achievements":
+                achievements.close()
+            if except_one != "encyclopedia":
+                encyclopedia.close()
+            if except_one != "graveyard":
+                graveyard_panel.close()
+            if except_one != "store":
+                fish_store.close()
+                store_mode = False
+            if except_one != "settings":
+                settings.close()
+            if except_one != "context":
+                context.close()
+            if except_one != "fish_info":
+                fish_info.close()
+            if except_one != "how_to_play":
+                how_to_play.close()
+
         def apply_opacity(value: float):
             cfg["opacity"] = max(0.30, min(1.0, value))
             win_mod.set_opacity(sdl_win, cfg["opacity"])
@@ -520,18 +547,32 @@ def main() -> int:
             elif action.startswith("op_"):
                 apply_opacity(int(action[3:]) / 100.0)
             elif action == "settings":
+                food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                close_all_overlays(except_one="settings")
                 settings.open(cfg, surface.get_size())
             elif action == "about":
+                food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                close_all_overlays()
                 about_dlg.open(*surface.get_size())
             elif action == "how_to_play":
+                food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                close_all_overlays(except_one="how_to_play")
                 how_to_play.open(*surface.get_size())
             elif action == "event_log":
+                food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                close_all_overlays(except_one="event_log")
                 event_log.toggle()
             elif action == "achievements":
+                food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                close_all_overlays(except_one="achievements")
                 achievements.toggle()
             elif action == "encyclopedia":
+                food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                close_all_overlays(except_one="encyclopedia")
                 encyclopedia.toggle()
             elif action == "graveyard":
+                food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                close_all_overlays(except_one="graveyard")
                 graveyard_panel.toggle()
             elif action == "tray":
                 if tray.started and sdl_win is not None:
@@ -687,14 +728,24 @@ def main() -> int:
                         # Only count and unlock when the name was actually changed
                         cfg["stat_renamed"] = int(cfg.get("stat_renamed", 0)) + 1
                         _fire_achievement("name_changer")
-                    # Panel handles its own drag/close; keep consuming events while visible
-                    continue
+                        continue
+                    if result == "close_outside":
+                        # Fish info was closed by an outside click; let this event pass through.
+                        pass
+                    elif result == "close_inside":
+                        continue
+                    elif result is True:
+                        continue
+                    else:
+                        # Panel handles its own drag/close and consumes interior clicks.
+                        continue
 
-                # Roster toolbar button (9,96)-(36,123) always toggles — even
-                # when the roster panel is currently open.
+                # Roster toolbar button always toggles — even when the roster panel
+                # is currently open.
                 if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
-                        and 6 <= ev.pos[0] <= 42 and 108 <= ev.pos[1] <= 144):
+                        and toolbar_button_rect('roster').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                    close_all_overlays(except_one="roster")
                     roster_mode = not roster_mode
                     if roster_mode:
                         fish_roster.open()
@@ -702,10 +753,11 @@ def main() -> int:
                         fish_roster.close()
                     continue
 
-                # Event log toolbar button (6,148)-(42,184)
+                # Event log toolbar button
                 if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
-                        and 6 <= ev.pos[0] <= 42 and 148 <= ev.pos[1] <= 184):
+                        and toolbar_button_rect('event_log').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                    close_all_overlays(except_one="event_log")
                     event_log.toggle()
                     continue
 
@@ -714,10 +766,11 @@ def main() -> int:
                     if event_log.handle_event(ev):
                         continue
 
-                # Achievements toolbar button (6,188)-(42,224)
+                # Achievements toolbar button
                 if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
-                        and 6 <= ev.pos[0] <= 42 and 188 <= ev.pos[1] <= 224):
+                        and toolbar_button_rect('achievements').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                    close_all_overlays(except_one="achievements")
                     achievements.toggle()
                     continue
 
@@ -725,10 +778,11 @@ def main() -> int:
                     if achievements.handle_event(ev):
                         continue
 
-                # Encyclopedia toolbar button (6,228)-(42,264)
+                # Encyclopedia toolbar button
                 if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
-                        and 6 <= ev.pos[0] <= 42 and 228 <= ev.pos[1] <= 264):
+                        and toolbar_button_rect('encyclopedia').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                    close_all_overlays(except_one="encyclopedia")
                     encyclopedia.toggle()
                     continue
 
@@ -736,10 +790,11 @@ def main() -> int:
                     if encyclopedia.handle_event(ev):
                         continue
 
-                # Graveyard toolbar button (6,268)-(42,304)
+                # Graveyard toolbar button
                 if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
-                        and 6 <= ev.pos[0] <= 42 and 268 <= ev.pos[1] <= 304):
+                        and toolbar_button_rect('graveyard').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                    close_all_overlays(except_one="graveyard")
                     graveyard_panel.toggle()
                     continue
 
@@ -747,10 +802,11 @@ def main() -> int:
                     if graveyard_panel.handle_event(ev):
                         continue
 
-                # Fish Shoppe toolbar button (6,308)-(42,344)
+                # Fish Shoppe toolbar button
                 if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
-                        and 6 <= ev.pos[0] <= 42 and 308 <= ev.pos[1] <= 344):
+                        and toolbar_button_rect('store').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                    close_all_overlays(except_one="store")
                     fish_store.toggle(cfg, surface.get_size())
                     store_mode = fish_store.visible
                     continue
@@ -806,23 +862,28 @@ def main() -> int:
                         continue
 
                 if fish_roster.visible:
-                    idx = fish_roster.handle_event(ev, fish_list)
+                    result = fish_roster.handle_event(ev, fish_list)
                     roster_mode = fish_roster.visible
-                    if idx is not None and 0 <= idx < len(fish_list):
-                        sel = fish_list[idx]
+                    if isinstance(result, int) and not isinstance(result, bool) and 0 <= result < len(fish_list):
+                        sel = fish_list[result]
                         fish_info.open(sel, *surface.get_size(),
                                        ev.pos[0], ev.pos[1],
                                        renderer.assets.fish_sheets)
                         cfg["stat_profile_opens"] = int(cfg.get("stat_profile_opens", 0)) + 1
                         fish_roster.close()
                         roster_mode = False
-                    continue
+                        continue
+                    if result is True:
+                        continue
+                    # result is None: click outside roster panel closed it; allow event to fall through
 
                 if context.visible:
                     act = context.handle_event(ev)
-                    if act:
+                    if act is True:
+                        continue
+                    if isinstance(act, str):
                         do_action(act)
-                    continue
+                        continue
 
                 if ev.type == pygame.QUIT:
                     # Intercept window-close: hide to tray when available
@@ -851,8 +912,7 @@ def main() -> int:
                 elif ev.type == pygame.MOUSEBUTTONDOWN:
                     if ev.button == 1:
                         mx, my = ev.pos
-                        # Toolbar: FoodBtn (6,28)-(42,64), CleanBtn (6,68)-(42,104)
-                        if 6 <= mx <= 42 and 28 <= my <= 64:
+                        if toolbar_button_rect('food').collidepoint(mx, my):
                             food_mode = not food_mode
                             if food_mode:
                                 clean_mode = False
@@ -861,7 +921,7 @@ def main() -> int:
                             else:
                                 cursor_mgr.set_mode("normal")
                                 set_status("Food mode off.")
-                        elif 6 <= mx <= 42 and 68 <= my <= 104:
+                        elif toolbar_button_rect('clean').collidepoint(mx, my):
                             clean_mode = not clean_mode
                             if clean_mode:
                                 food_mode = False
@@ -896,6 +956,7 @@ def main() -> int:
                                             clicked = f
                                             break
                                     if clicked is not None:
+                                        close_all_overlays(except_one="fish_info")
                                         fish_info.open(clicked, *surface.get_size(),
                                                        mx, my,
                                                        renderer.assets.fish_sheets)
@@ -915,23 +976,26 @@ def main() -> int:
                         else:
                             # Drag/resize zones (only when not interacting with interior)
                             locked = bool(cfg.get("locked", False))
-                            if not locked and win_mod.in_resize_handle(mx, my, *surface.get_size()):
+                            _sz = surface.get_size()
+                            log.debug("DRAG-ZONE click mx=%d my=%d sz=%s locked=%s resize=%s close=%s title=%s",
+                                      mx, my, _sz, locked,
+                                      win_mod.in_resize_handle(mx, my, *_sz),
+                                      win_mod.in_close_button(mx, my, *_sz),
+                                      win_mod.in_title_bar(mx, my, *_sz))
+                            if not locked and win_mod.in_resize_handle(mx, my, *_sz):
                                 drag_mode = "resize"
-                                drag_screen_start = win_mod.get_screen_cursor() if USE_ABS_CURSOR else (mx, my)
-                                drag_orig = surface.get_size()
+                                pygame.event.set_grab(True)
+                                drag_orig = _sz
                                 drag_rel_accum = (0, 0)
-                            elif win_mod.in_close_button(mx, my, *surface.get_size()):
+                                log.debug("drag_mode=resize drag_orig=%s", drag_orig)
+                            elif win_mod.in_close_button(mx, my, *_sz):
                                 do_action("tray")
-                            elif not locked and win_mod.in_title_bar(mx, my, *surface.get_size()):
+                            elif not locked and win_mod.in_title_bar(mx, my, *_sz):
                                 drag_mode = "move"
-                                if USE_ABS_CURSOR:
-                                    sc = win_mod.get_screen_cursor()
-                                    wp = win_mod.get_position(sdl_win) or (0, 0)
-                                    drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
-                                else:
-                                    # macOS fallback: anchor to window position at drag start.
-                                    drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
-                                    drag_rel_accum = (0, 0)
+                                pygame.event.set_grab(True)
+                                drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
+                                drag_rel_accum = (0, 0)
+                                log.debug("drag_mode=move drag_win_start=%s", drag_win_start)
                     if ev.button == 3:
                         items = feed_menu()
                         # Reflect current toggle state
@@ -947,57 +1011,47 @@ def main() -> int:
                         for it in items:
                             if it.action in toggles:
                                 it.checked = toggles[it.action]
+                        food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                        close_all_overlays(except_one="context")
                         context.open(items, ev.pos[0], ev.pos[1], surface.get_size())
                 elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
                     drag_mode = None
                     drag_rel_accum = (0, 0)
+                    pygame.event.set_grab(False)
                 elif ev.type == pygame.MOUSEMOTION:
                     # Safety: MOUSEBUTTONUP may not be delivered if the cursor
                     # leaves the window while dragging.  Cancel drag when we
                     # detect the button is no longer held.
-                    if drag_mode and not pygame.mouse.get_pressed()[0]:
+                    if drag_mode and not ev.buttons[0]:
+                        log.debug("DRAG safety-cancel: buttons=%s drag_mode=%s", ev.buttons, drag_mode)
                         drag_mode = None
                         drag_rel_accum = (0, 0)
+                        pygame.event.set_grab(False)
                     if drag_mode:
                         if drag_mode == "move":
-                            if USE_ABS_CURSOR:
-                                cx, cy = win_mod.get_screen_cursor()
-                                win_mod.set_position(sdl_win,
-                                                     cx - drag_offset[0],
-                                                     cy - drag_offset[1])
-                                if IS_WINDOWS:
-                                    pygame.event.clear(pygame.MOUSEMOTION)
-                            else:
-                                # macOS fallback: accumulate bounded rel movement.
-                                rx = max(-40, min(40, int(ev.rel[0])))
-                                ry = max(-40, min(40, int(ev.rel[1])))
-                                drag_rel_accum = (
-                                    drag_rel_accum[0] + rx,
-                                    drag_rel_accum[1] + ry,
-                                )
-                                win_mod.set_position(sdl_win,
-                                                     drag_win_start[0] + drag_rel_accum[0],
-                                                     drag_win_start[1] + drag_rel_accum[1])
+                            # Accumulate raw relative movement and reposition the window.
+                            # pygame.event.clear() discards any spurious MOUSEMOTION events
+                            # that SDL fires when SetWindowPos() moves the window under the
+                            # cursor, preventing a feedback oscillation loop.
+                            rx, ry = ev.rel
+                            drag_rel_accum = (drag_rel_accum[0] + rx, drag_rel_accum[1] + ry)
+                            win_mod.set_position(sdl_win,
+                                                 drag_win_start[0] + drag_rel_accum[0],
+                                                 drag_win_start[1] + drag_rel_accum[1])
+                            pygame.event.clear(pygame.MOUSEMOTION)
                         elif drag_mode == "resize":
-                            if USE_ABS_CURSOR:
-                                cx, cy = win_mod.get_screen_cursor()
-                                dx = cx - drag_screen_start[0]
-                                dy = cy - drag_screen_start[1]
-                            else:
-                                # macOS fallback: bounded rel accumulation.
-                                rx = max(-40, min(40, int(ev.rel[0])))
-                                ry = max(-40, min(40, int(ev.rel[1])))
-                                drag_rel_accum = (
-                                    drag_rel_accum[0] + rx,
-                                    drag_rel_accum[1] + ry,
-                                )
-                                dx, dy = drag_rel_accum
-                            pending_resize = (
-                                max(win_mod.MIN_W, min(win_mod.MAX_W, drag_orig[0] + dx)),
-                                max(win_mod.MIN_H, min(win_mod.MAX_H, drag_orig[1] + dy)),
-                            )
-                            last_resize_t = time.perf_counter()
-                    elif pygame.mouse.get_pressed()[0] and not food_mode and not clean_mode:
+                            # Bounded rel accumulation keeps resize speed sane and
+                            # prevents runaway feedback from SDL window-size events.
+                            rx = max(-50, min(50, int(ev.rel[0])))
+                            ry = max(-50, min(50, int(ev.rel[1])))
+                            drag_rel_accum = (drag_rel_accum[0] + rx, drag_rel_accum[1] + ry)
+                            _rw = max(win_mod.MIN_W, min(win_mod.MAX_W, drag_orig[0] + drag_rel_accum[0]))
+                            _rh = max(win_mod.MIN_H, min(win_mod.MAX_H, drag_orig[1] + drag_rel_accum[1]))
+                            # Only call set_window_size() when the target actually changed
+                            # to avoid flooding SDL with redundant resize events.
+                            if (_rw, _rh) != surface.get_size():
+                                win_mod.set_window_size(sdl_win, _rw, _rh)
+                    elif ev.buttons[0] and not food_mode and not clean_mode:
                         # Drag-pickup: recover from activation-click MOUSEBUTTONDOWN
                         # being absorbed by Windows before the window gained focus.
                         # If the left button is still held while the mouse is in the
@@ -1006,38 +1060,59 @@ def main() -> int:
                         locked = bool(cfg.get("locked", False))
                         if not locked and win_mod.in_title_bar(mx2, my2, *surface.get_size()):
                             drag_mode = "move"
-                            if USE_ABS_CURSOR:
-                                sc = win_mod.get_screen_cursor()
-                                wp = win_mod.get_position(sdl_win) or (0, 0)
-                                drag_offset = (sc[0] - wp[0], sc[1] - wp[1])
-                            else:
-                                drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
-                                drag_rel_accum = (0, 0)
+                            drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
+                            drag_rel_accum = (0, 0)
                 elif ev.type == pygame.WINDOWFOCUSGAINED:
                     pass
                 elif ev.type == pygame.WINDOWFOCUSLOST:
-                    pass
+                    log.debug("WINDOWFOCUSLOST drag_mode=%s", drag_mode)
+                    drag_mode = None
+                    drag_rel_accum = (0, 0)
+                    pygame.event.set_grab(False)
+                elif ev.type == pygame.WINDOWRESIZED:
+                    # Use sdl_win.size (the actual current window size) rather than
+                    # ev.x / ev.y.  On Windows, SDL2 fires spurious WINDOWRESIZED
+                    # events with stale / zero dimensions when a borderless+resizable
+                    # window is only *moved*, which would incorrectly trigger
+                    # set_mode() and kill an active drag.  sdl_win.size always reflects
+                    # the real OS window dimensions and is safe to compare against the
+                    # current pygame surface size.
+                    if sdl_win is not None:
+                        try:
+                            cur_w, cur_h = sdl_win.size
+                        except Exception:
+                            cur_w, cur_h = ev.x, ev.y
+                    else:
+                        cur_w, cur_h = ev.x, ev.y
+                    cur_w = max(win_mod.MIN_W, min(win_mod.MAX_W, cur_w))
+                    cur_h = max(win_mod.MIN_H, min(win_mod.MAX_H, cur_h))
+                    if surface.get_size() != (cur_w, cur_h):
+                        _saved_pos = win_mod.get_position(sdl_win)
+                        surface = win_mod.resize_surface(cur_w, cur_h)
+                        sdl_win = win_mod.get_sdl_window()
+                        if drag_mode == "resize":
+                            pygame.event.set_grab(True)
+                        win_mod.set_opacity(sdl_win, float(cfg.get("opacity", 1.0)))
+                        if cfg.get("always_on_top"):
+                            win_mod.set_always_on_top(sdl_win, True)
+                        if sdl_win and _saved_pos:
+                            win_mod.set_position(sdl_win, *_saved_pos)
+                        renderer.surface = surface
+                        renderer._static_bg = None
+                        tr = renderer.compute_tank_rect()
+                        env.tank_w = tr.w
+                        env.tank_h = tr.h
+                        # Discard any MOUSEMOTION events that SDL queued as a
+                        # side-effect of the SDL_SetWindowSize() / set_mode() calls
+                        # above.  Without this, a spurious rel-delta can corrupt the
+                        # resize accumulator and snap the window to the wrong size.
+                        pygame.event.clear(pygame.MOUSEMOTION)
 
             # -------- tray --------
             ta = tray.poll()
             if ta:
                 do_action(ta)
 
-            # -------- pending resize (debounce: apply once, 50 ms after drag pauses) --------
-            if pending_resize is not None and now - last_resize_t >= 0.05:
-                _rw, _rh = pending_resize
-                pending_resize = None
-                _saved_pos = win_mod.get_position(sdl_win)
-                surface = win_mod.resize_surface(_rw, _rh)
-                # set_mode() recreates the SDL window — must refresh the handle.
-                sdl_win = win_mod.get_sdl_window()
-                if sdl_win and _saved_pos:
-                    win_mod.set_position(sdl_win, *_saved_pos)
-                renderer.surface = surface
-                renderer._static_bg = None
-                tr = renderer.compute_tank_rect()
-                env.tank_w = tr.w
-                env.tank_h = tr.h
 
             # -------- simulation --------
             should_sim = not paused and not (hidden and cfg.get("pause_when_hidden", True))

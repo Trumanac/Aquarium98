@@ -154,7 +154,7 @@ class SettingsDialog:
             return "cancel"
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
             for b in self.buttons:
-                if b.rect.collidepoint(ev.pos):
+                if b.rect.inflate(0, 8).collidepoint(ev.pos):
                     # "full_reset" and "reset_tank" keep settings open — caller handles
                     if b.action not in ("full_reset", "reset_tank"):
                         self.close()

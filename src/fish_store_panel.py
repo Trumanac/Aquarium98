@@ -14,8 +14,10 @@ Prices scale by difficulty:
   Hard   (3) × 1.60
 
 Rarity base buy prices:
-  Common   :  5-12 coins
-  Uncommon : 10-22 coins
+  Common     :  10-30 coins
+  Uncommon   :  40-90 coins
+  Rare       : 200-350 coins  (~5% per slot)
+  Super-rare : 600-900 coins  (~1% per slot)
 
 Manual restock cost:
   Easy 25 / Normal 40 / Hard 65 / Brutal 90 / Nightmare 120
@@ -31,7 +33,7 @@ from typing import Optional
 
 import pygame
 
-from .simulation.species import common_species, uncommon_species
+from .simulation.species import common_species, uncommon_species, rare_species, super_rare_species
 from .coin_system import fish_sell_price
 
 # ---------------------------------------------------------------------------
@@ -199,15 +201,25 @@ class FishStorePanel:
     def _restock_slots(self, cfg: dict) -> None:
         diff = int(cfg.get("difficulty", 2))
         mult = _PRICE_MULT.get(diff, 1.25)
-        pool = common_species() + uncommon_species()
-        random.shuffle(pool)
-        chosen = pool[:NUM_SLOTS]
+        _common   = common_species()
+        _uncommon = uncommon_species()
+        _rare     = rare_species()
+        _epic     = super_rare_species()
         self.slots = []
-        for sp in chosen:
-            base = (
-                random.randint(80, 140) if sp.get("uncommon")
-                else random.randint(30, 55)
-            )
+        for _ in range(NUM_SLOTS):
+            r = random.random()
+            if r < 0.01 and _epic:          # ~1 %  — super-rare / epic
+                sp   = random.choice(_epic)
+                base = random.randint(600, 900)
+            elif r < 0.06 and _rare:        # ~5 %  — rare
+                sp   = random.choice(_rare)
+                base = random.randint(200, 350)
+            elif r < 0.22 and _uncommon:    # ~16 % — uncommon
+                sp   = random.choice(_uncommon)
+                base = random.randint(40, 90)
+            else:                           # ~78 % — common
+                sp   = random.choice(_common)
+                base = random.randint(10, 30)
             price = max(1, round(base * mult))
             self.slots.append(StoreSlot(species=sp, price=price))
         self._restock_timer = 0.0
@@ -245,7 +257,11 @@ class FishStorePanel:
             mx, my = ev.pos
 
             # Close button
-            if self._close_rect.collidepoint(mx, my):
+            if self._close_rect.inflate(8, 8).collidepoint(mx, my):
+                self.close()
+                return ("consume",)
+
+            if not self._panel_rect.collidepoint(mx, my):
                 self.close()
                 return None
 
@@ -269,15 +285,21 @@ class FishStorePanel:
             # Scroll arrows
             if self._scroll_up.collidepoint(mx, my):
                 self._scroll = max(0, self._scroll - 1)
+                return ("consume",)
             if self._scroll_dn.collidepoint(mx, my):
                 max_scroll = max(0, len(fish_list) - self._visible_sell_rows())
                 self._scroll = min(max_scroll, self._scroll + 1)
+                return ("consume",)
+
+            if self._panel_rect.collidepoint(mx, my):
+                return ("consume",)
 
         if ev.type == pygame.MOUSEWHEEL:
             if self._panel_rect.collidepoint(pygame.mouse.get_pos()):
                 self._scroll = max(0, self._scroll - ev.y)
                 max_scroll = max(0, len(fish_list) - self._visible_sell_rows())
                 self._scroll = min(max_scroll, self._scroll)
+                return ("consume",)
 
         return None
 

@@ -64,6 +64,16 @@ def fish_screen_rect(fish, tr: pygame.Rect) -> pygame.Rect:
     return pygame.Rect(sx, sy, draw_w, draw_h)
 
 
+def toolbar_button_rect(key: str) -> pygame.Rect:
+    """Return the clickable rect for a toolbar button key."""
+    try:
+        idx = TB_BTN_KEYS.index(key)
+    except ValueError:
+        raise KeyError(f"Unknown toolbar button: {key}") from None
+    return pygame.Rect(TB_BTN_X, TB_BTN_Y_START + idx * TB_BTN_SPACING,
+                       TB_BTN_SIZE, TB_BTN_SIZE)
+
+
 def _bevel_rect_surf(surf: pygame.Surface, r: pygame.Rect,
                      pressed: bool = False) -> None:
     tl = WIN_DARK  if pressed else WIN_LIGHT
@@ -96,6 +106,16 @@ PAD_B = 22    # status bar
 
 WATER_SURFACE_H  = 28   # top strip for ripple animation
 CAUSTICS_FLOOR_H = 58   # bottom strip for caustics animation
+
+# Toolbar geometry
+TB_BTN_X        = 6
+TB_BTN_Y_START  = 28
+TB_BTN_SIZE     = 36
+TB_BTN_SPACING  = 40
+TB_BTN_KEYS     = (
+    'food', 'clean', 'roster', 'event_log',
+    'achievements', 'encyclopedia', 'graveyard', 'store'
+)
 
 # Decoration geometry at reference interior (448×274)
 _REF_W = 448
@@ -1184,15 +1204,11 @@ class Renderer:
             pygame.draw.rect(self.surface, (0, 80, 200), (x, y, 36, 36), 2)
 
     def _draw_toolbar(self, encyclopedia_seen: int = 0) -> None:
-        # 36×36 icons, centred in the 48 px left chrome (x=6), 4 px gaps (spacing=40)
-        self._draw_tb_btn('food',         6,  28, pressed=self.food_mode)
-        self._draw_tb_btn('clean',        6,  68, pressed=self.clean_mode)
-        self._draw_tb_btn('roster',       6, 108, pressed=self.roster_mode)
-        self._draw_tb_btn('event_log',    6, 148, pressed=self.event_log_mode)
-        self._draw_tb_btn('achievements', 6, 188, pressed=self.achievements_mode)
-        self._draw_tb_btn('encyclopedia', 6, 228, pressed=self.encyclopedia_mode)
-        self._draw_tb_btn('graveyard',    6, 268, pressed=self.graveyard_mode)
-        self._draw_tb_btn('store',        6, 308, pressed=self.store_mode)
+        # 36×36 icons, centred in the 48 px left chrome (x=6), spaced by 40 px vertically
+        for idx, key in enumerate(TB_BTN_KEYS):
+            y = TB_BTN_Y_START + idx * TB_BTN_SPACING
+            pressed = getattr(self, f"{key}_mode", False)
+            self._draw_tb_btn(key, TB_BTN_X, y, pressed=pressed)
 
     def _draw_status_bar(self, paused: bool, locked: bool, stats: dict,
                          status_msg: str = "") -> None:

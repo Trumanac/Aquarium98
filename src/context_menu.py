@@ -118,15 +118,16 @@ class ContextMenu:
         h += 6
         return w, h
 
-    def handle_event(self, ev: pygame.event.Event) -> Optional[str]:
+    def handle_event(self, ev: pygame.event.Event) -> bool | Optional[str]:
         if not self.visible:
             return None
         if ev.type == pygame.MOUSEMOTION:
             self._update_hover(ev.pos)
+            return self._point_in_menu(ev.pos)
         elif ev.type == pygame.MOUSEBUTTONDOWN:
             if not self._point_in_menu(ev.pos):
                 self.close()
-                return None
+                return False
             self._update_hover(ev.pos)
             if self.open_submenu_idx >= 0 and self.submenu_hover >= 0:
                 sub = self.items[self.open_submenu_idx].submenu
@@ -138,13 +139,15 @@ class ContextMenu:
                 it = self.items[self.hover]
                 if it.submenu:
                     self.open_submenu_idx = self.hover
-                    return None
+                    return True
                 if it.action is not None and it.enabled:
                     self.close()
                     return it.action
+            return True
         elif ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
             self.close()
-        return None
+            return True
+        return False
 
     def _point_in_menu(self, pos) -> bool:
         if self.x <= pos[0] <= self.x + self._w and self.y <= pos[1] <= self.y + self._h:

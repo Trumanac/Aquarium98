@@ -152,6 +152,8 @@ def spawn_food_at(env: Environment, ix: float, iy: float,
     """Drop 3–5 food flakes centred on interior coords (ix, iy).
 
     First pass fills a random preferred layer; second fills any free slot.
+    If all existing food slots are active, create extra slots so clicks never
+    fail due to a hard food cap.
     Returns number of flakes actually spawned.
     """
     if count is None:
@@ -166,6 +168,11 @@ def spawn_food_at(env: Environment, ix: float, iy: float,
         if not food.active and spawned < count:
             _init_food(food, ix, iy)
             spawned += 1
+    while spawned < count:
+        extra = Food(active=False, layer=target_layer)
+        _init_food(extra, ix, iy)
+        env.food.append(extra)
+        spawned += 1
     return spawned
 
 

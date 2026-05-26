@@ -39,10 +39,8 @@ def try_breed(fish_list: list[Fish], tank_w: int, tank_h: int, cfg: dict,
     b = random.choice(same_sp)
     a.breed_cd = 120.0
     b.breed_cd = 120.0
-    # Rare/uncommon fish never breed true — offspring are always common species.
-    # Special fish should only appear as natural spawn events.
-    is_special = a.sp.get("rare") or a.sp.get("uncommon")
-    breed_sp = a.sp if not is_special else random.choice(common_species())
+    # Offspring are always the same species as the parents — no random downgrade.
+    breed_sp = a.sp
     juvenile = make_fish(tank_w, tank_h, species=breed_sp,
                          x=(a.x + b.x) / 2, y=(a.y + b.y) / 2,
                          scale=0.45,

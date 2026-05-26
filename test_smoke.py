@@ -172,6 +172,22 @@ def test_parse_version_formats():
     print("       OK — _parse_version comparisons correct")
 
 
+def test_spawn_food_appends_extra_flakes_when_full():
+    """spawn_food_at() should append food slots when the pool is exhausted."""
+    from src.simulation.environment import make_environment, spawn_food_at  # noqa: PLC0415
+
+    env = make_environment(100, 100)
+    for food in env.food:
+        food.active = True
+
+    spawned = spawn_food_at(env, 50.0, 20.0, count=5)
+    assert spawned == 5, f"Expected 5 new flakes, got {spawned}"
+    assert len(env.food) == 35, f"Expected 35 food slots after growth, got {len(env.food)}"
+    assert sum(1 for food in env.food if food.active) == 35, "All food slots should be active after spawning"
+
+    print("       OK — spawn_food_at grows the food pool when full")
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------

@@ -114,7 +114,7 @@ class EncyclopediaPanel:
             self._scroll = max(0, self._scroll - ev.y * _ROW_H)
             return True
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-            if self._close_btn.collidepoint(ev.pos):
+            if self._close_btn.inflate(8, 8).collidepoint(ev.pos):
                 self.close()
                 return True
             # Toggle row expansion on click
@@ -127,6 +127,8 @@ class EncyclopediaPanel:
                     return True
             if self._rect.collidepoint(ev.pos):
                 return True
+            self.close()
+            return False
         return False
 
     # ------------------------------------------------------------------
