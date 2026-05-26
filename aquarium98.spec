@@ -43,7 +43,6 @@ a = Analysis(
         (str(ROOT / "config.default.json"), "."),
         # Include example screenshots used by the How to Play guide.
         (str(ROOT / "screenshots"), "screenshots"),
-        (str(ROOT / "docs"), "docs"),
     ],
     hiddenimports=[
         # pystray dynamically loads its platform backend at runtime.
