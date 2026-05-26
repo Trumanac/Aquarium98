@@ -30,7 +30,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.5"
+    APP_VERSION = "1.0.6"
 
 import pygame
 

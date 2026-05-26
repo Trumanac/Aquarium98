@@ -9,6 +9,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.6] — 2026-05-26
+
+### Fixed
+- **`rare_encounter` / `super_rare` achievements unreachable** — after
+  `ensure_min_population` was changed to only spawn common fish (v1.0.5),
+  the only code path that fired these achievements became dead code.  Fixed
+  by adding rare-fish detection directly to `check_achievements()` (scans
+  fish currently in tank) and firing the achievements immediately when a
+  rare/epic fish is purchased from the Fish Shoppe.
+- **Hermit Crab rarity flag** corrected from `uncommon` → `rare` to match
+  its section comment and intended 3 % spawn tier; it now shows as "Rare"
+  in the Fish Shoppe and earns the `rare_encounter` achievement.
+- `stat_bubbles_popped` and `stat_shoppe_buys` added to `config.default.json`
+  (were accessed safely via `cfg.get()` fallback but absent from the defaults
+  file).
+- Removed dead "log any rare fish that naturally spawned" block from
+  `aquarium.py` (unreachable since `ensure_min_population` change).
+
+---
+
 ## [1.0.5] — 2026-05-25
 
 ### Fixed
@@ -178,7 +198,8 @@ elusive Moonshell Hermit (Epic) is a tank highlight when it appears.
 
 ---
 
-[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.5...HEAD
+[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.6...HEAD
+[1.0.6]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.6
 [1.0.5]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.5
 [1.0.4]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.4
 [1.0.3]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.3
