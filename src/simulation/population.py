@@ -6,7 +6,7 @@ from __future__ import annotations
 import random
 
 from .fish import Fish, make_fish, LAYER_Y_MAX_FRAC
-from .species import MAX_RARE_IN_TANK, common_species
+from .species import common_species
 
 
 def cull_dead(fish_list: list[Fish]) -> int:
@@ -53,20 +53,19 @@ def try_breed(fish_list: list[Fish], tank_w: int, tank_h: int, cfg: dict,
 
 def ensure_min_population(fish_list: list[Fish], tank_w: int, tank_h: int,
                           cfg: dict) -> int:
-    """Auto-spawn fish to maintain min_fish."""
+    """Auto-spawn common fish to maintain min_fish.
+
+    Only common species are used here so that rare and uncommon species can
+    only be discovered intentionally (starting tank, store purchases, breeding)
+    rather than silently appearing as maintenance fish in the background.
+    """
     target = int(cfg.get("min_fish", 5))
     added = 0
-    rare_count = sum(1 for f in fish_list if f.sp.get("rare"))
     while len(fish_list) < target:
-        # Don't spawn rare fish past the cap when filling minimum population
-        force_sp = None
-        if rare_count >= MAX_RARE_IN_TANK:
-            force_sp = random.choice(common_species())
-        new_f = make_fish(tank_w, tank_h, species=force_sp,
+        new_f = make_fish(tank_w, tank_h,
+                          species=random.choice(common_species()),
                           existing_names={f.name for f in fish_list},
                           lifespan_base=float(cfg.get("lifespan_base", 1814400)))
-        if new_f.sp.get("rare"):
-            rare_count += 1
         fish_list.append(new_f)
         added += 1
     return added
