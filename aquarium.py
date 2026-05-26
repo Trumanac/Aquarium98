@@ -857,6 +857,13 @@ def main() -> int:
                                 cfg["stat_total_fish"]  = int(cfg.get("stat_total_fish", 0)) + 1
                                 cfg["stat_shoppe_buys"] = int(cfg.get("stat_shoppe_buys", 0)) + 1
                                 log_event(cfg, f"Bought {sp_buy.get('name','?')} for {price_buy} coins", "coin")
+                                if sp_buy.get("super_rare"):
+                                    log_event(cfg, f"[**] Epic fish {sp_buy.get('name','?')} added to tank!", "rare")
+                                    _fire_achievement("super_rare")
+                                    _fire_achievement("rare_encounter")
+                                elif sp_buy.get("rare"):
+                                    log_event(cfg, f"[*] Rare fish {sp_buy.get('name','?')} added to tank!", "rare")
+                                    _fire_achievement("rare_encounter")
                                 set_status(f"Bought {sp_buy.get('name','?')}! ({int(cfg.get('coins',0))} coins left)")
                                 # Persist immediately so a crash won't lose the new fish
                                 cfg_mod.save(cfg)
@@ -1199,22 +1206,10 @@ def main() -> int:
                     prev_count = len(fish_list)
                     added = ensure_min_population(fish_list, env.tank_w, env.tank_h, cfg)
                     cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + added
-                    # Mark newly spawned fish as seen
+                    # Mark newly spawned fish as seen (ensure_min_population only
+                    # spawns common species, so no rare logging needed here)
                     for new_f in fish_list[prev_count:]:
                         mark_seen(cfg, new_f.sp.get("name", ""))
-                    # Log any rare fish that naturally spawned
-                    for new_f in fish_list[prev_count:]:
-                        if new_f.sp.get("super_rare"):
-                            log_event(cfg,
-                                      f"[**] An epic {new_f.sp['name']} appeared: {new_f.name}!",
-                                      "rare")
-                            _fire_achievement("super_rare")
-                            _fire_achievement("rare_encounter")
-                        elif new_f.sp.get("rare"):
-                            log_event(cfg,
-                                      f"[*] A rare {new_f.sp['name']} appeared: {new_f.name}!",
-                                      "rare")
-                            _fire_achievement("rare_encounter")
 
             # -------- real-time day/night override --------
             if cfg.get("night_cycle", True):

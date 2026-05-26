@@ -275,7 +275,7 @@ SPECIES: list[dict] = [
     # ── Hermit Crab (rare) ───────────────────────────────────────
     dict(name="Hermit Crab", body=(200, 120, 50),  fin=(150, 80, 30),   accent=(240, 180, 100),
          size=7,  speed=5,  sociable=False, pattern="spots", aspect=1.00, fin_style="low",
-         bottom=True, layer_pref=1, sheet="Hermit_Crab.png", uncommon=True, hermit_crab=True,
+         bottom=True, layer_pref=1, sheet="Hermit_Crab.png", rare=True, hermit_crab=True,
          fun_facts=[
              "Hermit crabs don't grow their own shells — they find and move into abandoned gastropod shells, trading up as they grow.",
              "They communicate by rubbing their shells together, a rasping sound used to negotiate shell swaps with neighbours.",

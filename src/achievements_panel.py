@@ -195,6 +195,18 @@ def check_achievements(cfg: dict, fish_list: list) -> list[str]:
             _try("long_haul")
             break
 
+    # Rare Encounter — a rare (or super-rare) fish is in the tank
+    for f in fish_list:
+        if f.sp.get("rare") or f.sp.get("super_rare"):
+            _try("rare_encounter")
+            break
+
+    # Epic Find — a super-rare fish is in the tank
+    for f in fish_list:
+        if f.sp.get("super_rare"):
+            _try("super_rare")
+            break
+
     return newly
 
 
