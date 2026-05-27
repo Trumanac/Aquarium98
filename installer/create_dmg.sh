@@ -84,15 +84,25 @@ else
   STAGING="$REPO_ROOT/dist/_dmg_staging"
   rm -rf "$STAGING"
   mkdir -p "$STAGING"
-  cp -r "$APP_BUNDLE" "$STAGING/"
+  # Prevent Spotlight (mds) from indexing the staging folder — its file-handle
+  # lock is the most common cause of "hdiutil: create failed - Resource busy"
+  # in headless / CI environments.
+  touch "$STAGING/.metadata_never_index"
+  # ditto preserves code-signature extended attributes; cp -r can strip them.
+  ditto "$APP_BUNDLE" "$STAGING/Aquarium98.app"
   ln -s /Applications "$STAGING/Applications"
-  hdiutil create \
-    -volname "Aquarium 98 ${VERSION}" \
-    -srcfolder "$STAGING" \
-    -ov \
-    -format UDZO \
-    -imagekey zlib-level=9 \
-    "$OUTPUT"
+  # Retry up to 3 times: transient mds/fseventsd locks can outlast the sentinel.
+  for _attempt in 1 2 3; do
+    hdiutil create \
+      -volname "Aquarium 98 ${VERSION}" \
+      -srcfolder "$STAGING" \
+      -ov \
+      -format UDZO \
+      -imagekey zlib-level=9 \
+      "$OUTPUT" && break
+    echo "   hdiutil attempt ${_attempt} failed — retrying in 5 s…"
+    sleep 5
+  done
   rm -rf "$STAGING"
 fi
 
