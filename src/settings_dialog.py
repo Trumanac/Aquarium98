@@ -11,6 +11,8 @@ from typing import Optional
 
 import pygame
 
+from .config import DIFFICULTY_PRESETS
+
 WIN_GRAY = (192, 192, 192)
 WIN_LIGHT = (255, 255, 255)
 WIN_DARK = (64, 64, 64)
@@ -69,6 +71,7 @@ class SettingsDialog:
             _Slider("opacity",       "Window Opacity",  0.30, 1.00, 0.05),
             _Slider("sound_volume",  "Sound Volume",    0.00, 1.00, 0.05),
             _Slider("max_bubbles",   "Max Bubbles",     1,    30,   1,   integer=True),
+            _Slider("max_fish",      "Max Fish",        4,    30,   1,   integer=True),
             _Slider("castle_choice", "Castle Style",    1,    5,    1,   integer=True),
             _Slider("bg_choice",     "Background",      1,    4,    1,   integer=True),
             _Slider("plant_choice",  "Plant Style",     1,    3,    1,   integer=True),
@@ -208,6 +211,12 @@ class SettingsDialog:
             val = round(val / s.step) * s.step
             val = round(val, 4)
         self.cfg_edit[s.key] = val
+        # When difficulty changes, reset the Max Fish slider to the new
+        # preset default so users see a sensible starting point — they can
+        # then drag the Max Fish slider to override it before saving.
+        if s.key == "difficulty":
+            preset_mf = DIFFICULTY_PRESETS.get(int(val), {}).get("max_fish", 16)
+            self.cfg_edit["max_fish"] = preset_mf
 
     def commit_into(self, cfg: dict) -> None:
         cfg.update(self.cfg_edit)

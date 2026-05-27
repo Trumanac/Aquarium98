@@ -48,7 +48,7 @@ CURRENT_VERSION = "1.0"
 # Hard caps that must never be exceeded regardless of user config.
 # (Documented in memory: avoid invalid meter-slot loops, keep entity counts sane.)
 SLOT_CAPS = {
-    "max_fish":    18,
+    "max_fish":    30,
     "max_bubbles": 30,
     "max_food":    40,
 }
@@ -58,25 +58,25 @@ SLOT_CAPS = {
 # ---------------------------------------------------------------------------
 DIFFICULTY_PRESETS: dict[int, dict[str, Any]] = {
     1: {  # Peaceful
-        "min_fish": 3, "max_fish": 18, "start_fish": 8,
+        "min_fish": 3, "max_fish": 30, "start_fish": 8,
         "hunger_rate": 0.20, "breed_rate": 1.20, "algae_rate": 0.15,
         "growth_rate": 0.80, "age_rate": 0.60, "bubble_rate": 1.0,
         "max_food": 28,
     },
     2: {  # Normal
-        "min_fish": 2, "max_fish": 16, "start_fish": 6,
+        "min_fish": 2, "max_fish": 25, "start_fish": 6,
         "hunger_rate": 0.50, "breed_rate": 0.70, "algae_rate": 0.30,
         "growth_rate": 0.50, "age_rate": 1.00, "bubble_rate": 1.0,
         "max_food": 24,
     },
     3: {  # Hard
-        "min_fish": 1, "max_fish": 14, "start_fish": 5,
+        "min_fish": 1, "max_fish": 20, "start_fish": 5,
         "hunger_rate": 1.00, "breed_rate": 0.45, "algae_rate": 0.50,
         "growth_rate": 0.40, "age_rate": 1.30, "bubble_rate": 1.0,
         "max_food": 20,
     },
     4: {  # Brutal
-        "min_fish": 0, "max_fish": 12, "start_fish": 4,
+        "min_fish": 0, "max_fish": 15, "start_fish": 4,
         "hunger_rate": 1.60, "breed_rate": 0.30, "algae_rate": 0.80,
         "growth_rate": 0.30, "age_rate": 1.60, "bubble_rate": 1.0,
         "max_food": 18,
@@ -128,9 +128,27 @@ def _validate(cfg: dict[str, Any]) -> dict[str, Any]:
 
     cfg["difficulty"] = max(1, min(5, int(cfg.get("difficulty", 2))))
 
-    # Apply difficulty preset (always overwrites individual rate keys)
+    # Apply difficulty preset for all gameplay-rate variables.
+    # max_fish is intentionally NOT overwritten here — it is user-configurable
+    # via the Max Fish slider and must survive both difficulty changes and
+    # app updates.  The preset value is only used as the fallback default when
+    # no user preference has been saved yet (handled by cfg.get() below).
     preset = DIFFICULTY_PRESETS[cfg["difficulty"]]
-    cfg.update(preset)
+    cfg["min_fish"]    = preset["min_fish"]
+    cfg["start_fish"]  = preset["start_fish"]
+    cfg["max_food"]    = preset["max_food"]
+    cfg["hunger_rate"] = preset["hunger_rate"]
+    cfg["breed_rate"]  = preset["breed_rate"]
+    cfg["algae_rate"]  = preset["algae_rate"]
+    cfg["growth_rate"] = preset["growth_rate"]
+    cfg["age_rate"]    = preset["age_rate"]
+    cfg["bubble_rate"] = preset["bubble_rate"]
+    # max_fish: clamp user's saved value to a valid range; fall back to the
+    # difficulty preset default when no user value is present.
+    cfg["max_fish"] = max(
+        preset["min_fish"],
+        min(SLOT_CAPS["max_fish"], int(cfg.get("max_fish", preset["max_fish"])))
+    )
 
     # Performance mode: cap fish and food to reduce rendering load
     if cfg.get("performance_mode", False):

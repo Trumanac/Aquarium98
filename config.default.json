@@ -24,6 +24,7 @@
   "bubble_rate": 1.0,
   "lifespan_base": 1814400,
   "max_bubbles": 30,
+  "max_fish": 25,
   "castle_choice": 1,
   "bg_choice": 1,
   "plant_choice": 1,
