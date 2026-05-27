@@ -15,7 +15,7 @@
 ; Uninstaller is registered automatically.
 
 #define MyAppName      "Aquarium 98"
-#define MyAppVersion   "1.0.7"
+#define MyAppVersion   "1.0.8"
 #define MyAppPublisher "Truman AC"
 #define MyAppURL       "https://github.com/trumanac/aquarium98"
 #define MyAppExeName   "Aquarium98.exe"

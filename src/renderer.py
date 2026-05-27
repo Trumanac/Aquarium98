@@ -509,6 +509,14 @@ class FishSpriteCache:
 # Renderer
 # ---------------------------------------------------------------------------
 
+# Mood indicator colours — module-level constant to avoid dict allocation per fish per frame
+_MOOD_COLOURS: dict[str, tuple[int, int, int]] = {
+    "happy":    (30,  200,  60),
+    "content":  (220, 200,  40),
+    "stressed": (220,  60,  60),
+    "hungry":   (220, 160,  20),
+}
+
 class Renderer:
     def __init__(self, surface: pygame.Surface, font: pygame.font.Font):
         self.surface = surface
@@ -1093,12 +1101,6 @@ class Renderer:
                                       sy - label.get_height() - 1))
 
         if show_moods:
-            _MOOD_COLOURS = {
-                "happy":    (30,  200,  60),
-                "content":  (220, 200,  40),
-                "stressed": (220,  60,  60),
-                "hungry":   (220, 160,  20),
-            }
             mood     = getattr(f, "mood", "content")
             mood_col = _MOOD_COLOURS.get(mood, (128, 128, 128))
             if show_names:

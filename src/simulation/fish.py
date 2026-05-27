@@ -223,6 +223,9 @@ def make_fish(tank_w: int, tank_h: int, *,
     # Stagger frog initial rest so multiple frogs don't all jump at once
     if sp.get("frog"):
         _f.frog_timer = random.uniform(3.0, 12.0)
+    # Stagger hermit crab so it doesn't immediately emerge on first frame
+    if sp.get("hermit_crab"):
+        _f.crab_timer = random.uniform(8.0, 20.0)
     return _f
 
 

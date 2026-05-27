@@ -9,6 +9,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.8] — 2026-05-27
+
+### Fixed
+- **Full reset now clears all stats** — `stat_nightmare_days`, `stat_profile_opens`,
+  and `stat_bred_fish` were not zeroed on a full reset; they now are.
+- **Hermit Crab immediately leaves shell on spawn** — `crab_timer` was never
+  initialised in `make_fish`, so the crab transitioned from `in_shell` →
+  `emerging` on the very first simulation frame.  Fixed by assigning a random
+  8–20 s initial timer (mirrors the frog stagger fix).
+- **`config.default.json` window height default corrected** — default `window_h`
+  was `320` but config validation always clamps to the minimum `366` (needed to
+  fit all 8 toolbar buttons plus the status bar).  Default is now `366` so new
+  installations open at the intended size without a silent clamp.
+- **Stale food-pool comment** in `environment.py` corrected from "15 fixed slots
+  (5 back + 5 mid + 5 front)" to "30 fixed slots (10 back + 10 mid + 10 front)".
+
+### Changed
+- **Multi-monitor window restore** — window position is now set via
+  `sdl_win.position` after SDL window creation, replacing the unreliable
+  `SDL_VIDEO_WINDOW_POS` env-var hint.  A `_title_bar_on_screen()` guard using
+  `MonitorFromPoint` on Windows prevents restoring to an invisible off-screen
+  position on any multi-monitor layout (including left-side monitors with
+  negative X coordinates).
+
+### Optimised
+- `_MOOD_COLOURS` dict moved from a per-call local to a module-level constant
+  in `renderer.py`, eliminating a new dict allocation for every visible fish
+  every frame when mood indicators are shown.
+
+---
+
 ## [1.0.7] — 2026-05-26
 
 ### Added

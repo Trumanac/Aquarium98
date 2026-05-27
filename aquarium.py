@@ -30,7 +30,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.7"
+    APP_VERSION = "1.0.8"
 
 import pygame
 
@@ -718,6 +718,9 @@ def main() -> int:
                         cfg["stat_renamed"]          = 0
                         cfg["stat_bubbles_popped"]   = 0
                         cfg["stat_shoppe_buys"]      = 0
+                        cfg["stat_nightmare_days"]   = 0.0
+                        cfg["stat_profile_opens"]    = 0
+                        cfg["stat_bred_fish"]        = 0
                         cfg_mod.save(cfg)
                         cfg_mod.clear_fish_state()  # wipe persisted fish on full reset
                         win_mod.set_opacity(sdl_win, cfg.get("opacity", 1.0))

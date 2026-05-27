@@ -1,6 +1,6 @@
 [project]
 name = "aquarium98"
-version = "1.0.7"
+version = "1.0.8"
 description = "A retro Windows 98-styled desktop aquarium widget"
 readme = "README.md"
 license = { file = "LICENSE" }

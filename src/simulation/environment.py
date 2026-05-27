@@ -70,7 +70,7 @@ def _reset_bubble(b: Bubble, tank_w: int, tank_h: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Food pool  (15 fixed slots: 5 back + 5 mid + 5 front)
+# Food pool  (30 fixed slots: 10 back + 10 mid + 10 front)
 # ---------------------------------------------------------------------------
 
 _FOOD_LAYERS = [3]*10 + [2]*10 + [1]*10  # 30 total slots
