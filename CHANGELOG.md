@@ -9,6 +9,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.7] — 2026-05-26
+
+### Added
+- **In-app updater** — the version/update area in Settings is now a clickable
+  button.  States cycle through: *Check for Updates* → *Download* (with a
+  live progress bar) → *Install & Restart*.  The Inno Setup installer is
+  downloaded to a temp directory and launched silently (`/SILENT /NORESTART`);
+  the app then quits so the installer can replace the previous version.
+  Works on Windows (installer .exe), macOS (DMG open), and Linux (AppImage).
+  All network errors are swallowed; the feature never blocks or crashes the app.
+- `update_check.recheck()` — re-triggers the background GitHub API check so
+  the user can manually force a fresh look.
+- `update_check.start_download()` / `get_download_state()` / `launch_installer()`
+  public API for the download/install flow.
+
+---
+
 ## [1.0.6] — 2026-05-26
 
 ### Fixed
@@ -198,7 +215,8 @@ elusive Moonshell Hermit (Epic) is a tank highlight when it appears.
 
 ---
 
-[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.7...HEAD
+[1.0.7]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.7
 [1.0.6]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.6
 [1.0.5]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.5
 [1.0.4]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.4

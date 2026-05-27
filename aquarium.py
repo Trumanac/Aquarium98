@@ -30,7 +30,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.6"
+    APP_VERSION = "1.0.7"
 
 import pygame
 
@@ -747,6 +747,16 @@ def main() -> int:
                         full_reset_dlg.open(*surface.get_size())
                     elif result == "reset_tank":
                         do_action("reset")
+                    elif result == "check_updates":
+                        update_check.recheck(APP_VERSION)
+                    elif result == "download_update":
+                        update_check.start_download()
+                    elif result == "install_update":
+                        if update_check.launch_installer():
+                            pygame.quit()
+                            return 0
+                        else:
+                            set_status("Could not launch installer — download may be corrupt.")
                     continue
 
                 if fish_info.visible:
@@ -1274,7 +1284,13 @@ def main() -> int:
             sound.set_volume(float(cfg.get("sound_volume", 0.7)))
             sound.set_muted(bool(cfg.get("sound_muted", False)))
             # Poll update check result so settings panel can display it
-            settings.update_info = update_check.get_result()
+            _uc_result = update_check.get_result()
+            _dl_state  = update_check.get_download_state()
+            settings.update_info = {
+                **_uc_result,
+                "dl_status":   _dl_state["status"],
+                "dl_progress": _dl_state["progress"],
+            }
             renderer.food_mode   = food_mode
             renderer.clean_mode  = clean_mode
             roster_mode              = fish_roster.visible

@@ -96,6 +96,8 @@ class SettingsDialog:
         self._row_h       = 24
         self._veil: pygame.Surface | None = None
         self._veil_size = (0, 0)
+        # Rect for the clickable update-status button (positioned in draw)
+        self._update_btn_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
 
     def open(self, cfg: dict, screen_size: tuple[int, int]) -> None:
         self.cfg_edit = dict(cfg)
@@ -159,6 +161,18 @@ class SettingsDialog:
                     if b.action not in ("full_reset", "reset_tank"):
                         self.close()
                     return b.action
+            # Update button — keep settings open so user sees progress
+            if self._update_btn_rect.w > 0 and self._update_btn_rect.collidepoint(ev.pos):
+                dl  = self.update_info.get("dl_status", "idle")
+                if dl == "ready":
+                    return "install_update"
+                if dl in ("idle", "failed"):
+                    ui = self.update_info
+                    if not ui:  # check still pending
+                        return "check_updates"
+                    if ui.get("newer"):
+                        return "download_update"
+                    return "check_updates"  # re-check when already up to date
             # Sliders checked BEFORE checkboxes: the slider hit-area extends right
             # into the checkbox column, so sliders must win the priority contest.
             for s in self.sliders:
@@ -308,22 +322,76 @@ class SettingsDialog:
             screen.blit(val_s, (check_col_x + lbl_s.get_width() + 4, sy))
             sy += lbl_s.get_height() + 3
 
-        # Version / update status line
+        # Version / update status — interactive button area
         ui = self.update_info
-        if ui.get("newer"):
-            ver_text = f"v{ui.get('latest', '?')} available \u2014 see GitHub"
-            ver_col  = (160, 0, 0)
-        elif "newer" in ui:
-            ver_text = "App is up to date"
-            ver_col  = (0, 120, 0)
-        else:
-            ver_text = "Checking for updates..."
-            ver_col  = (80, 80, 80)
-        ver_s   = self.font.render(ver_text, True, ver_col)
         avail_w = p.right - 14 - check_col_x
-        screen.blit(ver_s, (check_col_x, sy),
-                    area=(0, 0, min(ver_s.get_width(), avail_w), ver_s.get_height()))
-        sy += ver_s.get_height() + 3
+        dl_status   = ui.get("dl_status",   "idle")
+        dl_progress = float(ui.get("dl_progress", 0.0))
+
+        if dl_status == "downloading":
+            # Progress bar replaces version text while downloading
+            bar_w  = min(avail_w, 130)
+            bar_h  = self.font.get_height() + 2
+            bar_r  = pygame.Rect(check_col_x, sy, bar_w, bar_h)
+            pygame.draw.rect(screen, WIN_MID, bar_r)
+            fill_w = max(2, int(bar_w * dl_progress))
+            pygame.draw.rect(screen, (0, 100, 200),
+                             pygame.Rect(bar_r.left, bar_r.top, fill_w, bar_h))
+            pct_s = self.font.render(f"Downloading {int(dl_progress * 100)}%",
+                                     True, WIN_LIGHT)
+            screen.blit(pct_s, (bar_r.left + 3,
+                                 bar_r.top + (bar_h - pct_s.get_height()) // 2),
+                        area=(0, 0, bar_r.w - 3, pct_s.get_height()))
+            self._update_btn_rect = pygame.Rect(0, 0, 0, 0)  # not clickable
+            sy += bar_h + 3
+        else:
+            # Determine button label, colour and whether it's interactive
+            if dl_status == "ready":
+                ver_text = f"v{ui.get('latest','?')} ready — Install & Restart"
+                ver_col  = (0, 130, 0)
+                clickable = True
+            elif dl_status == "failed":
+                ver_text = "Download failed — Retry"
+                ver_col  = (160, 0, 0)
+                clickable = True
+            elif ui.get("newer"):
+                ver_text = f"v{ui.get('latest','?')} available — Download"
+                ver_col  = (0, 0, 160)
+                clickable = True
+            elif "newer" in ui:
+                ver_text = "App is up to date"
+                ver_col  = (0, 120, 0)
+                clickable = False
+            else:
+                ver_text = "Check for Updates"
+                ver_col  = (80, 80, 80)
+                clickable = True
+            ver_s = self.font.render(ver_text, True,
+                                     ver_col if not clickable else WIN_LIGHT)
+            text_w = min(ver_s.get_width() + 8, avail_w)
+            text_h = ver_s.get_height() + 4
+            btn_r  = pygame.Rect(check_col_x, sy, text_w, text_h)
+            if clickable:
+                pygame.draw.rect(screen, ver_col, btn_r)
+                pygame.draw.line(screen, WIN_LIGHT, btn_r.topleft,
+                                 (btn_r.right - 1, btn_r.top))
+                pygame.draw.line(screen, WIN_LIGHT, btn_r.topleft,
+                                 (btn_r.left, btn_r.bottom - 1))
+                pygame.draw.line(screen, WIN_DARK,
+                                 (btn_r.right - 1, btn_r.top),
+                                 (btn_r.right - 1, btn_r.bottom - 1))
+                pygame.draw.line(screen, WIN_DARK,
+                                 (btn_r.left, btn_r.bottom - 1),
+                                 (btn_r.right - 1, btn_r.bottom - 1))
+                screen.blit(ver_s, (btn_r.left + 4,
+                                    btn_r.top + (text_h - ver_s.get_height()) // 2))
+                self._update_btn_rect = btn_r
+            else:
+                ver_plain = self.font.render(ver_text, True, ver_col)
+                screen.blit(ver_plain, (check_col_x, sy),
+                            area=(0, 0, avail_w, ver_plain.get_height()))
+                self._update_btn_rect = pygame.Rect(0, 0, 0, 0)
+            sy += text_h + 3
 
         # Buttons
         for b in self.buttons:
