@@ -25,6 +25,43 @@ RESIZE_HANDLE = 20   # bottom-right corner hot-zone size (px)
 TITLE_BAR_H = 24
 
 
+def _title_bar_on_screen(x: int, y: int, w: int) -> bool:
+    """Return True if the window title bar is accessible on at least one monitor.
+
+    Uses MonitorFromPoint (Windows) which correctly handles any multi-monitor
+    layout including monitors to the left (negative X) or stacked vertically.
+    Falls back to a generous range check on other platforms.
+    """
+    cx = x + w // 2   # centre of title bar
+    cy = y + 12
+
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            import ctypes.wintypes
+            MONITOR_DEFAULTTONULL = 0
+            pt = ctypes.wintypes.POINT(cx, cy)
+            return bool(ctypes.windll.user32.MonitorFromPoint(  # type: ignore[attr-defined]
+                pt, MONITOR_DEFAULTTONULL))
+        except Exception:  # noqa: BLE001
+            pass  # fall through to generic check
+
+    # Generic fallback: allow any position within 2× the combined desktop footprint
+    # in both directions so left/right/above monitors are not wrongly rejected.
+    try:
+        sizes = pygame.display.get_desktop_sizes()
+        if not sizes:
+            return True
+        combined_w = sum(s[0] for s in sizes)
+        combined_h = sum(s[1] for s in sizes)
+        return (
+            -combined_w < cx < combined_w * 2
+            and -combined_h < cy < combined_h * 2
+        )
+    except Exception:  # noqa: BLE001
+        return True
+
+
 def init_window(cfg: dict) -> tuple[pygame.Surface, object | None, pygame.font.Font]:
     """Initialize pygame window and return (surface, sdl_window_or_None, font)."""
     os.environ.setdefault("SDL_VIDEO_CENTERED", "0")
@@ -32,13 +69,14 @@ def init_window(cfg: dict) -> tuple[pygame.Surface, object | None, pygame.font.F
     pygame.display.init()
     pygame.font.init()
 
-    # Place at saved position via env hint (must be set BEFORE set_mode)
     x = int(cfg.get("window_x", 100))
     y = int(cfg.get("window_y", 100))
-    os.environ["SDL_VIDEO_WINDOW_POS"] = f"{x},{y}"
-
     w = max(MIN_W, min(MAX_W, int(cfg.get("window_w", 512))))
     h = max(MIN_H, min(MAX_H, int(cfg.get("window_h", 320))))
+
+    # SDL_VIDEO_WINDOW_POS is a best-effort hint for the initial set_mode call.
+    # We also explicitly set sdl_win.position below, which is authoritative.
+    os.environ["SDL_VIDEO_WINDOW_POS"] = f"{x},{y}"
 
     flags = pygame.NOFRAME | pygame.RESIZABLE
     try:
@@ -49,7 +87,7 @@ def init_window(cfg: dict) -> tuple[pygame.Surface, object | None, pygame.font.F
 
     pygame.display.set_caption("Aquarium 98")
 
-    # Try to get SDL window handle for opacity / always-on-top
+    # Try to get SDL window handle for opacity / always-on-top / position
     sdl_win = None
     try:
         from pygame._sdl2 import Window  # type: ignore
@@ -66,22 +104,21 @@ def init_window(cfg: dict) -> tuple[pygame.Surface, object | None, pygame.font.F
     except Exception as e:   # noqa: BLE001
         log.warning("pygame._sdl2 unavailable: %s", e)
 
-    # Off-screen guard: if saved position is outside all displays, recenter.
-    try:
-        sizes = pygame.display.get_desktop_sizes()
-        if sizes:
-            total_w = sum(s[0] for s in sizes)
-            max_h = max(s[1] for s in sizes)
-            if x > total_w - 50 or y > max_h - 50 or x < -w + 50 or y < -h + 50:
-                log.info("Saved window position off-screen; recentering")
-                if sdl_win is not None:
-                    try:
-                        first = sizes[0]
-                        sdl_win.position = ((first[0] - w) // 2, (first[1] - h) // 2)
-                    except Exception:   # noqa: BLE001
-                        pass
-    except Exception:   # noqa: BLE001
-        pass
+    # Restore exact saved position via SDL_SetWindowPosition — authoritative,
+    # works on any monitor layout (negative X for left monitors, etc.).
+    # Fall back to primary-monitor centre only if the title bar would be
+    # completely off all screens.
+    if sdl_win is not None:
+        try:
+            if _title_bar_on_screen(x, y, w):
+                sdl_win.position = (x, y)
+            else:
+                log.info("Saved window position off all screens; recentering")
+                sizes = pygame.display.get_desktop_sizes()
+                pw, ph = sizes[0] if sizes else (1920, 1080)
+                sdl_win.position = ((pw - w) // 2, (ph - h) // 2)
+        except Exception as e:  # noqa: BLE001
+            log.debug("set initial position failed: %s", e)
 
     # Load font (fallback chain)
     font = _load_font()
