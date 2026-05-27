@@ -126,6 +126,9 @@ class AchievementPopup:
         self._ok_btn    = pygame.Rect(0, 0, _BTN_W, _BTN_H)
         self._x_btn     = pygame.Rect(0, 0, 14, 14)
         self._ok_press  = False
+        # Title-bar gradient cache
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
 
     # ------------------------------------------------------------------
     @property
@@ -227,15 +230,18 @@ class AchievementPopup:
         pygame.draw.rect(surface, WIN_GRAY, r)
         _bevel(surface, r)
 
-        # ── Title bar gradient ───────────────────────────────────────
+        # ── Title bar gradient (cached per width) ───────────────────────
         tb = pygame.Rect(r.left + 3, r.top + 2, r.w - 6, _TB_H)
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
-                 int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
-                 int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
-            pygame.draw.line(surface, c, (tb.left, tb.top + i), (tb.right - 1, tb.top + i))
-
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf_w = tb.w
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+        surface.blit(self._title_surf, tb.topleft)
         ts = fnt.render("Achievement Unlocked!", True, WIN_LIGHT)
         surface.blit(ts, (tb.left + 4, tb.top + (tb.h - ts.get_height()) // 2))
 
@@ -296,3 +302,135 @@ class AchievementPopup:
         if self._ok_press:
             ox += 1; oy += 1
         surface.blit(ok_s, (ox, oy))
+
+
+# ---------------------------------------------------------------------------
+# Update-available notification banner
+# ---------------------------------------------------------------------------
+
+_UB_W       = 260    # banner width in pixels
+_UB_DISMISS = 10.0   # seconds before auto-dismiss
+
+
+class UpdateBanner:
+    """Non-modal Win98 banner shown once per session when a new version is ready.
+
+    The banner appears at the top-centre of the screen and auto-dismisses after
+    ``_UB_DISMISS`` seconds.  Clicking ``[x]`` closes it immediately.  All
+    other events are *not* consumed so the aquarium stays fully interactive.
+    """
+
+    def __init__(self, font: "pygame.font.Font") -> None:
+        self.font     = font
+        self._version = ""
+        self._timer   = 0.0
+        self._visible = False
+        self._rect    = pygame.Rect(0, 0, 0, 0)
+        self._x_btn   = pygame.Rect(0, 0, 14, 14)
+        # Title-bar gradient cache
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
+
+    # ------------------------------------------------------------------
+    @property
+    def visible(self) -> bool:
+        return self._visible
+
+    # ------------------------------------------------------------------
+    def show(self, version: str) -> None:
+        """Display the banner for *version* (e.g. ``'1.2.0'``)."""
+        self._version = version
+        self._timer   = _UB_DISMISS
+        self._visible = True
+
+    def close(self) -> None:
+        self._visible = False
+
+    # ------------------------------------------------------------------
+    def update(self, dt: float) -> None:
+        if not self._visible:
+            return
+        self._timer -= dt
+        if self._timer <= 0.0:
+            self._visible = False
+
+    # ------------------------------------------------------------------
+    def handle_event(self, ev: "pygame.event.Event") -> bool:
+        """Return ``True`` only if the ``[x]`` button was clicked.
+
+        Everything else passes through so the banner is non-modal.
+        """
+        if not self._visible:
+            return False
+        if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            if self._x_btn.collidepoint(ev.pos):
+                self._visible = False
+                return True
+        return False
+
+    # ------------------------------------------------------------------
+    def draw(self, surface: "pygame.Surface") -> None:
+        if not self._visible:
+            return
+
+        sw, _sh  = surface.get_size()
+        fh       = self.font.get_height()
+        bw       = min(_UB_W, sw - 20)
+        body_w   = bw - _PAD * 2
+
+        hint_lines = _wrap(self.font, "Open Settings to download and install.", body_w)
+        ph = _TB_H + _PAD + fh + 4 + len(hint_lines) * (fh + 2) + _PAD + 4
+
+        px = (sw - bw) // 2
+        py = 6
+        r  = pygame.Rect(px, py, bw, ph)
+        self._rect  = r
+        self._x_btn = pygame.Rect(r.right - 3 - 14, r.top + 2, 14, 14)
+
+        # ── Panel background + bevel ─────────────────────────────────
+        pygame.draw.rect(surface, WIN_GRAY, r)
+        _bevel(surface, r)
+
+        # ── Title bar gradient (cached per width) ───────────────────────
+        tb = pygame.Rect(r.left + 3, r.top + 2, r.w - 6, _TB_H)
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf_w = tb.w
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (
+                    int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                    int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                    int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t),
+                )
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+        surface.blit(self._title_surf, tb.topleft)
+        ts = self.font.render("Update Available", True, WIN_LIGHT)
+        surface.blit(ts, (tb.left + 4, tb.top + (tb.h - ts.get_height()) // 2))
+
+        # ── [x] close button ─────────────────────────────────────────
+        pygame.draw.rect(surface, WIN_GRAY, self._x_btn)
+        _bevel(surface, self._x_btn)
+        xs = self.font.render("x", True, (0, 0, 0))
+        surface.blit(xs, (
+            self._x_btn.left + (self._x_btn.w - xs.get_width()) // 2,
+            self._x_btn.top  + (self._x_btn.h - xs.get_height()) // 2,
+        ))
+
+        # ── Body text ────────────────────────────────────────────────
+        ty = r.top + _TB_H + _PAD
+        v_surf = self.font.render(f"v{self._version} is available!", True, TITLE_A)
+        surface.blit(v_surf, (r.left + _PAD, ty))
+        ty += fh + 4
+        for line in hint_lines:
+            hs = self.font.render(line, True, (0, 0, 0))
+            surface.blit(hs, (r.left + _PAD, ty))
+            ty += fh + 2
+
+        # ── Auto-dismiss progress bar ─────────────────────────────────
+        bar_r = pygame.Rect(r.left + _PAD, r.bottom - 5, r.w - _PAD * 2, 3)
+        pygame.draw.rect(surface, WIN_MID, bar_r)
+        filled = max(0, int(bar_r.w * (self._timer / _UB_DISMISS)))
+        if filled > 0:
+            pygame.draw.rect(surface, TITLE_B,
+                             pygame.Rect(bar_r.left, bar_r.top, filled, bar_r.h))

@@ -108,6 +108,16 @@ def _btn(surf: pygame.Surface, r: pygame.Rect, label: str,
 # ---------------------------------------------------------------------------
 # Fish-bowl renderer
 # ---------------------------------------------------------------------------
+_BOWL_WATER_SURF: dict[int, pygame.Surface] = {}  # diam -> cached water ellipse
+
+def _get_bowl_water(diam: int) -> pygame.Surface:
+    """Return a cached semi-transparent water ellipse surface for the given diameter."""
+    if diam not in _BOWL_WATER_SURF:
+        s = pygame.Surface((diam, diam), pygame.SRCALPHA)
+        pygame.draw.ellipse(s, (18, 52, 148, 175), s.get_rect())
+        _BOWL_WATER_SURF[diam] = s
+    return _BOWL_WATER_SURF[diam]
+
 def _draw_bowl(surf: pygame.Surface, cx: int, cy: int, diam: int,
                fish_surf: pygame.Surface | None) -> None:
     """Draw a round fish bowl centred at (cx, cy).
@@ -119,9 +129,8 @@ def _draw_bowl(surf: pygame.Surface, cx: int, cy: int, diam: int,
     """
     r = diam // 2
 
-    # Water interior (semi-transparent blue-green)
-    water = pygame.Surface((diam, diam), pygame.SRCALPHA)
-    pygame.draw.ellipse(water, (18, 52, 148, 175), water.get_rect())
+    # Water interior (semi-transparent blue-green) — blit cached surface
+    surf.blit(_get_bowl_water(diam), (cx - r, cy - r))
 
     # Fish sprite centred and slightly lowered inside bowl
     if fish_surf is not None:
@@ -129,9 +138,7 @@ def _draw_bowl(surf: pygame.Surface, cx: int, cy: int, diam: int,
         fx = diam // 2 - fw // 2
         fy = diam // 2 - fh // 2 + 6
         fy = max(2, min(diam - fh - 2, fy))
-        water.blit(fish_surf, (fx, fy))
-
-    surf.blit(water, (cx - r, cy - r))
+        surf.blit(fish_surf, (cx - r + fx, cy - r + fy))
 
     # Rim
     pygame.draw.ellipse(surf, (90, 70, 45), (cx - r, cy - r, diam, diam), 3)
@@ -174,6 +181,9 @@ class FishStorePanel:
         self._scroll_dn   = pygame.Rect(0, 0, 0, 0)
         self._slot_previews: list[pygame.Surface | None] = []   # cached per-slot fish previews
         self.tip_regions: list[tuple[pygame.Rect, str]] = []    # for tooltips
+        # Title-bar gradient cache
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
 
     # ------------------------------------------------------------------ #
     def open(self, cfg: dict, screen_size: tuple[int, int]) -> None:
@@ -191,11 +201,14 @@ class FishStorePanel:
             self.open(cfg, screen_size)
 
     # ------------------------------------------------------------------ #
-    def update(self, dt: float, cfg: dict) -> None:
-        """Advance restock timer (call every frame regardless of visibility)."""
+    def update(self, dt: float, cfg: dict) -> bool:
+        """Advance restock timer (call every frame regardless of visibility).
+        Returns True if an auto-restock occurred this frame."""
         self._restock_timer += dt
         if self._restock_timer >= RESTOCK_INTERVAL:
             self._restock_slots(cfg)
+            return True
+        return False
 
     # ------------------------------------------------------------------ #
     def _restock_slots(self, cfg: dict) -> None:
@@ -225,13 +238,10 @@ class FishStorePanel:
         self._restock_timer = 0.0
         self._slot_previews = []   # invalidate preview cache on restock
 
-    def mark_slot_bought(self, species: dict) -> None:
-        """Mark the slot for *species* as sold."""
-        want = species.get("name", "")
-        for slot in self.slots:
-            if slot.species.get("name", "") == want:
-                slot.bought = True
-                return
+    def mark_slot_bought(self, slot_idx: int) -> None:
+        """Mark the slot at *slot_idx* as sold."""
+        if 0 <= slot_idx < len(self.slots):
+            self.slots[slot_idx].bought = True
 
     # ------------------------------------------------------------------ #
     def _panel_geom(self, screen_w: int, screen_h: int) -> pygame.Rect:
@@ -270,7 +280,7 @@ class FishStorePanel:
                 if r.collidepoint(mx, my) and i < len(self.slots):
                     slot = self.slots[i]
                     if not slot.bought:
-                        return ("buy", slot.species, slot.price)
+                        return ("buy", i, slot.species, slot.price)
 
             # Restock button
             if self._restock_btn.collidepoint(mx, my):
@@ -320,14 +330,18 @@ class FishStorePanel:
         pygame.draw.rect(surface, WIN_GRAY, p)
         _bevel(surface, p)
 
-        # ── Title bar ────────────────────────────────────────────
+        # ── Title bar (gradient cached per width) ────────────────────────
         tb = pygame.Rect(p.left + 2, p.top + 2, p.w - 4, _TB_H)
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
-                 int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
-                 int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
-            pygame.draw.line(surface, c, (tb.left, tb.top + i), (tb.right, tb.top + i))
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf_w = tb.w
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+        surface.blit(self._title_surf, tb.topleft)
 
         title_surf = self.font.render("Fish Shoppe", True, WIN_LIGHT)
         surface.blit(title_surf, (tb.left + 4, tb.top + (tb.h - title_surf.get_height()) // 2))

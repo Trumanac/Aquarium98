@@ -30,7 +30,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.9"
+    APP_VERSION = "1.0.10"
 
 import pygame
 
@@ -80,7 +80,7 @@ from src.fish_store_panel import FishStorePanel
 from src.cursor_manager import CursorManager
 from src.tooltip import Tooltip
 from src.sound_manager import SoundManager
-from src.achievement_popup import AchievementPopup
+from src.achievement_popup import AchievementPopup, UpdateBanner
 from src import update_check
 
 # Logs live in the user data dir so they survive app updates / re-installs
@@ -288,6 +288,10 @@ def main() -> int:
         # Achievement unlock notifications
         achievement_popup = AchievementPopup(font)
 
+        # Update-available banner (shown once per session after version check)
+        update_banner    = UpdateBanner(font)
+        _update_notified = False
+
         def _fire_achievement(aid: str) -> None:
             """Unlock an achievement, then show popup / play sound / award coins."""
             if not unlock(cfg, aid):
@@ -355,8 +359,10 @@ def main() -> int:
 
         # Auto-food drop welcome-back bonus (when returning after a gap)
         if _welcome_back_msg and "missed you" in _welcome_back_msg:
+            _food_cap = int(cfg.get("max_food", 30))
             for _ in range(3):
-                spawn_food_at(env, env.tank_w * (0.3 + random.random() * 0.4), env.tank_h * 0.25)
+                spawn_food_at(env, env.tank_w * (0.3 + random.random() * 0.4), env.tank_h * 0.25,
+                              max_active=_food_cap)
 
         # Log the welcome-back / streak message
         if _welcome_back_msg:
@@ -406,16 +412,19 @@ def main() -> int:
         roster_mode = False
         store_mode  = False
         stat_accum  = 0.0   # real-time seconds; flushed to cfg every minute
+        # Cache encyclopedia_seen count — recomputed only when seen_species length changes
+        _seen_count_cache: int = -1
+        _encyclopedia_seen: int = 0
         # Resize is applied immediately on drag so the window size updates smoothly.
         # Streak display: show on first frame
         _streak_display = f"Day {streak} streak ><>" if streak > 1 else ""
         status_msg   = _welcome_back_msg or _streak_display or "Aquarium 98 ready."
-        status_timer = 180   # frames at 30 FPS
+        status_timer = 6.0   # seconds
 
-        def set_status(msg: str, frames: int = 120) -> None:
+        def set_status(msg: str, secs: float = 4.0) -> None:
             nonlocal status_msg, status_timer
             status_msg   = msg
-            status_timer = frames
+            status_timer = secs
 
         # Rotating idle tips shown when the status bar has been quiet a while
         _TIPS = [
@@ -436,8 +445,36 @@ def main() -> int:
             "Click a fish to view its full profile and rename it.",
             "Daily login streaks add to your progress. Come back tomorrow!",
         ]
-        tip_countdown = 450   # frames until first idle tip (~15 s at 30 FPS)
+        tip_countdown = 15.0  # seconds until first idle tip
         _tip_idx      = -1    # cycles through _TIPS sequentially
+
+        # Tooltip regions: build static toolbar Rects once; rebuild
+        # size-dependent ones only when the window size changes.
+        _tb_tips = [
+            (pygame.Rect(6,  28, 36, 36), "Feed fish  [F]"),
+            (pygame.Rect(6,  68, 36, 36), "Clean algae  [C]"),
+            (pygame.Rect(6, 108, 36, 36), "Fish List"),
+            (pygame.Rect(6, 148, 36, 36), "Event Log"),
+            (pygame.Rect(6, 188, 36, 36), "Achievements"),
+            (pygame.Rect(6, 228, 36, 36), "Encyclopaedia"),
+            (pygame.Rect(6, 268, 36, 36), "Graveyard"),
+            (pygame.Rect(6, 308, 36, 36), "Fish Shoppe"),
+        ]
+        _size_tips: list[tuple[pygame.Rect, str]] = []
+        _tooltip_size = (0, 0)
+
+        def _rebuild_size_tips(w: int, h: int) -> None:
+            nonlocal _size_tips, _tooltip_size
+            _size_tips = [
+                (pygame.Rect(w // 3, 3, w // 3, 14),
+                 "Fish: living fish in tank"),
+                (pygame.Rect(w * 2 // 3, 3, w // 6, 14),
+                 "Algae % — clean before it reaches 100%"),
+                (pygame.Rect(w * 5 // 6, 3, w // 6 - 2, 14),
+                 "Coins — earned from fish care & achievements"),
+                (pygame.Rect(w - 20, h - 20, 20, 20), "Drag to resize"),
+            ]
+            _tooltip_size = (w, h)
 
         # --- helpers ---
         def close_all_overlays(except_one: str | None = None) -> None:
@@ -499,7 +536,8 @@ def main() -> int:
             elif action == "pause":
                 paused = not paused
             elif action == "feed":
-                n = spawn_food_at(env, env.tank_w * 0.5, env.tank_h * 0.3)
+                n = spawn_food_at(env, env.tank_w * 0.5, env.tank_h * 0.3,
+                                  max_active=int(cfg.get("max_food", 30)))
                 set_status(f"Dropped {n} food flakes!")
             elif action == "clean":
                 clean_algae(env)
@@ -578,6 +616,8 @@ def main() -> int:
                 food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                 close_all_overlays(except_one="settings")
                 settings.open(cfg, surface.get_size())
+                if update_check.get_download_state()["status"] not in ("downloading", "ready"):
+                    update_check.recheck(APP_VERSION)
             elif action == "about":
                 food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                 close_all_overlays()
@@ -697,6 +737,9 @@ def main() -> int:
                 if how_to_play.visible:
                     how_to_play.handle_event(ev)
                     continue
+
+                # Update banner — non-modal; only consumes its own [x] click
+                update_banner.handle_event(ev)
 
                 # Achievement popup eats events while a notification is showing
                 if achievement_popup.visible:
@@ -853,6 +896,10 @@ def main() -> int:
                     close_all_overlays(except_one="store")
                     fish_store.toggle(cfg, surface.get_size())
                     store_mode = fish_store.visible
+                    # Mark visible shoppe slots as seen when player opens the panel
+                    if fish_store.visible:
+                        for _slot in fish_store.slots:
+                            mark_seen(cfg, _slot.species.get("name", ""))
                     continue
 
                 if fish_store.visible:
@@ -860,7 +907,7 @@ def main() -> int:
                     if store_action is not None:
                         action_type, *action_args = store_action
                         if action_type == "buy":
-                            sp_buy, price_buy = action_args
+                            buy_idx, sp_buy, price_buy = action_args
                             if spend_coins(cfg, price_buy):
                                 new_f = make_fish(
                                     env.tank_w, env.tank_h,
@@ -869,7 +916,7 @@ def main() -> int:
                                     lifespan_base=float(cfg.get("lifespan_base", 1814400)),
                                 )
                                 fish_list.append(new_f)
-                                fish_store.mark_slot_bought(sp_buy)
+                                fish_store.mark_slot_bought(buy_idx)
                                 mark_seen(cfg, sp_buy.get("name", ""))
                                 cfg["stat_total_fish"]  = int(cfg.get("stat_total_fish", 0)) + 1
                                 cfg["stat_shoppe_buys"] = int(cfg.get("stat_shoppe_buys", 0)) + 1
@@ -906,6 +953,8 @@ def main() -> int:
                             restock_cost = action_args[0]
                             if spend_coins(cfg, restock_cost):
                                 fish_store._restock_slots(cfg)
+                                for _slot in fish_store.slots:
+                                    mark_seen(cfg, _slot.species.get("name", ""))
                                 log_event(cfg, f"Restocked Fish Shoppe for {restock_cost} coins", "coin")
                                 set_status("Fish Shoppe restocked!")
                             else:
@@ -950,7 +999,8 @@ def main() -> int:
                     if ev.key == pygame.K_SPACE:
                         paused = not paused
                     elif ev.key == pygame.K_f:
-                        n = spawn_food_at(env, env.tank_w * 0.5, env.tank_h * 0.3)
+                        n = spawn_food_at(env, env.tank_w * 0.5, env.tank_h * 0.3,
+                                          max_active=int(cfg.get("max_food", 30)))
                         set_status(f"Dropped {n} food flakes!")
                     elif ev.key == pygame.K_c:
                         do_action("clean")
@@ -958,6 +1008,8 @@ def main() -> int:
                         do_action("reset")
                     elif ev.key == pygame.K_e:
                         settings.open(cfg, surface.get_size())
+                        if update_check.get_download_state()["status"] not in ("downloading", "ready"):
+                            update_check.recheck(APP_VERSION)
                     elif ev.key == pygame.K_ESCAPE:
                         do_action("tray")
                     elif ev.key == pygame.K_q and (ev.mod & pygame.KMOD_CTRL):
@@ -987,7 +1039,8 @@ def main() -> int:
                             ix = float(mx - tr.left)
                             iy = float(my - tr.top)
                             if food_mode:
-                                n = spawn_food_at(env, ix, iy)
+                                n = spawn_food_at(env, ix, iy,
+                                                  max_active=int(cfg.get("max_food", 30)))
                                 set_status(f"Dropped {n} food flakes!")
                             elif clean_mode:
                                 do_action("clean")
@@ -1199,16 +1252,29 @@ def main() -> int:
                                        float(cfg.get("growth_rate", 0.5)),
                                        float(cfg.get("age_rate", 1.0)))
                         maybe_change_layer(f, env.tank_h, sim_dt)
-                    # Mood update: count near-fish for each fish (solitary stress)
+                    # Mood update: count near-fish for solitary fish only.
+                    # Most fish don't use near_fish_count at all, so we skip
+                    # the O(n²) scan entirely when no solitary fish are present.
                     max_fish_cap = int(cfg.get("max_fish", 25))
-                    for f in fish_list:
-                        near = sum(
-                            1 for g in fish_list
-                            if g is not f
-                            and abs(g.x - f.x) < 50 and abs(g.y - f.y) < 50
-                        )
-                        update_mood(f, sim_dt, float(env.algae),
-                                    len(fish_list), max_fish_cap, near)
+                    _solitary = [f for f in fish_list if f.personality_type == "solitary"]
+                    if _solitary:
+                        # Build near-count for every fish in a single symmetric pass
+                        _near_counts: dict[int, int] = {}
+                        _n = len(fish_list)
+                        for _i in range(_n):
+                            for _j in range(_i + 1, _n):
+                                _fi, _fj = fish_list[_i], fish_list[_j]
+                                if abs(_fi.x - _fj.x) < 50 and abs(_fi.y - _fj.y) < 50:
+                                    _near_counts[id(_fi)] = _near_counts.get(id(_fi), 0) + 1
+                                    _near_counts[id(_fj)] = _near_counts.get(id(_fj), 0) + 1
+                        for f in fish_list:
+                            update_mood(f, sim_dt, float(env.algae),
+                                        len(fish_list), max_fish_cap,
+                                        _near_counts.get(id(f), 0))
+                    else:
+                        for f in fish_list:
+                            update_mood(f, sim_dt, float(env.algae),
+                                        len(fish_list), max_fish_cap, 0)
                     # Track deaths for event log + graveyard memorial
                     _dead = [f for f in fish_list if f.health <= 0.01]
                     for fd in _dead:
@@ -1233,10 +1299,6 @@ def main() -> int:
                     prev_count = len(fish_list)
                     added = ensure_min_population(fish_list, env.tank_w, env.tank_h, cfg)
                     cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + added
-                    # Mark newly spawned fish as seen (ensure_min_population only
-                    # spawns common species, so no rare logging needed here)
-                    for new_f in fish_list[prev_count:]:
-                        mark_seen(cfg, new_f.sp.get("name", ""))
 
             # -------- real-time day/night override --------
             if cfg.get("night_cycle", True):
@@ -1248,17 +1310,17 @@ def main() -> int:
                 env.night_factor = min(0.28, raw * 0.45)          # gentle dark
 
             # -------- status bar TTL countdown ------------
-            if status_timer > 0:
-                status_timer -= 1
-                if status_timer == 0:
+            if status_timer > 0.0:
+                status_timer -= frame_dt
+                if status_timer <= 0.0:
                     status_msg = ""
             else:
                 # Idle: count down to next rotating tip
-                tip_countdown -= 1
-                if tip_countdown <= 0:
+                tip_countdown -= frame_dt
+                if tip_countdown <= 0.0:
                     _tip_idx = (_tip_idx + 1) % len(_TIPS)
-                    set_status(_TIPS[_tip_idx], 240)
-                    tip_countdown = 450
+                    set_status(_TIPS[_tip_idx], 8.0)
+                    tip_countdown = 15.0
 
             # -------- stats accumulation --------
             stat_accum += frame_dt
@@ -1290,13 +1352,17 @@ def main() -> int:
             if burst_positions:
                 spawn_chest_burst(env, burst_positions)
                 sound.play_chest_creak()
-            fish_store.update(frame_dt, cfg)
+            _store_restocked = fish_store.update(frame_dt, cfg)
+            if _store_restocked and fish_store.visible:
+                for _slot in fish_store.slots:
+                    mark_seen(cfg, _slot.species.get("name", ""))
             update_popups(coin_popups, frame_dt)
 
             renderer.tick_animations(frame_dt)
             cursor_mgr.update(frame_dt)
             full_reset_dlg.update(frame_dt)
             achievement_popup.update(frame_dt)
+            update_banner.update(frame_dt)
             sound.update()
             sound.set_volume(float(cfg.get("sound_volume", 0.7)))
             sound.set_muted(bool(cfg.get("sound_muted", False)))
@@ -1308,6 +1374,12 @@ def main() -> int:
                 "dl_status":   _dl_state["status"],
                 "dl_progress": _dl_state["progress"],
             }
+            # Show one-time banner the first time a newer version is detected
+            if not _update_notified and _uc_result.get("newer"):
+                _latest = _uc_result.get("latest", "")
+                if _latest:
+                    update_banner.show(_latest)
+                    _update_notified = True
             renderer.food_mode   = food_mode
             renderer.clean_mode  = clean_mode
             roster_mode              = fish_roster.visible
@@ -1322,6 +1394,14 @@ def main() -> int:
             renderer.bg_choice     = int(cfg.get("bg_choice", 1))
             renderer.plant_choice  = int(cfg.get("plant_choice", 1))
             tr = renderer.compute_tank_rect()
+            # Refresh encyclopedia_seen only when a new species is discovered
+            _new_seen = len(cfg.get("seen_species", []))
+            if _new_seen != _seen_count_cache:
+                _seen_count_cache = _new_seen
+                _encyclopedia_seen = sum(
+                    1 for sp in SPECIES
+                    if is_seen(cfg, sp.get("name", ""))
+                )
             stats = {
                 "fish": len(fish_list),
                 "food": sum(1 for fd in env.food if fd.active and not fd.eaten),
@@ -1341,10 +1421,7 @@ def main() -> int:
                           status_msg=status_msg,
                           chest=chest,
                           coin_popups=coin_popups,
-                          encyclopedia_seen=sum(
-                              1 for sp in SPECIES
-                              if is_seen(cfg, sp.get("name", ""))
-                          ))
+                          encyclopedia_seen=_encyclopedia_seen)
             context.draw(surface)
             settings.draw(surface)
             fish_roster.draw(surface, fish_list, tr, renderer.assets.fish_sheets)
@@ -1360,33 +1437,18 @@ def main() -> int:
             about_dlg.draw(surface)
             how_to_play.draw(surface)
             achievement_popup.draw(surface)
+            update_banner.draw(surface)
 
             # ── Tooltips ──────────────────────────────────────────
             tooltip.clear_regions()
-            # Toolbar buttons (fixed positions in left chrome)
-            _tb_tips = [
-                (pygame.Rect(6,  28, 36, 36), "Feed fish  [F]"),
-                (pygame.Rect(6,  68, 36, 36), "Clean algae  [C]"),
-                (pygame.Rect(6, 108, 36, 36), "Fish List"),
-                (pygame.Rect(6, 148, 36, 36), "Event Log"),
-                (pygame.Rect(6, 188, 36, 36), "Achievements"),
-                (pygame.Rect(6, 228, 36, 36), "Encyclopaedia"),
-                (pygame.Rect(6, 268, 36, 36), "Graveyard"),
-                (pygame.Rect(6, 308, 36, 36), "Fish Shoppe"),
-            ]
             for _r, _t in _tb_tips:
                 tooltip.register(_r, _t)
-            # Title-bar stats (right-aligned area)
-            _w, _h = surface.get_size()
-            tooltip.register(pygame.Rect(_w // 3, 3, _w // 3, 14),
-                             "Fish: living fish in tank")
-            tooltip.register(pygame.Rect(_w * 2 // 3, 3, _w // 6, 14),
-                             "Algae % — clean before it reaches 100%")
-            tooltip.register(pygame.Rect(_w * 5 // 6, 3, _w // 6 - 2, 14),
-                             "Coins — earned from fish care & achievements")
-            # Resize handle (bottom-right corner)
-            tooltip.register(pygame.Rect(_w - 20, _h - 20, 20, 20),
-                             "Drag to resize")
+            # Title-bar stats and resize handle (depend on window size)
+            _cw, _ch = surface.get_size()
+            if (_cw, _ch) != _tooltip_size:
+                _rebuild_size_tips(_cw, _ch)
+            for _r, _t in _size_tips:
+                tooltip.register(_r, _t)
             # Dynamic panel regions (mood/rarity dots)
             for _tr_r, _tr_t in fish_roster.tip_regions:
                 tooltip.register(_tr_r, _tr_t)

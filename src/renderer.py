@@ -567,6 +567,9 @@ class Renderer:
         # Bubble sprite cache: (sprite_idx, size) → scaled Surface
         # Avoids smoothscale on every bubble every frame.
         self._bubble_sprite_cache: dict[tuple[int, int], pygame.Surface] = {}
+        # Grounded food sprite cache: (layer, flake_idx) → darkened Surface
+        # Avoids copy+fill on every grounded flake every frame.
+        self._grounded_food_cache: dict[tuple[int, int], pygame.Surface] = {}
         # Pre-tinted animation frames (built in _rebuild_decor, avoids per-frame copy+fill)
         self._surface_ripples_tinted: list[pygame.Surface] = []
         self._caustics_tinted:        list[pygame.Surface] = []
@@ -1023,11 +1026,15 @@ class Renderer:
             fy = tr.top  + int(fd.y)
             if layer_flakes:
                 raw_spr = layer_flakes[fd.flake_idx % 9]
-                # Grounded food: pixel-modify a copy so the cached surface is untouched
+                # Grounded food: darkened/faded tinted copy — built once per (layer, idx)
                 if getattr(fd, "grounded", False):
-                    spr = raw_spr.copy()
-                    spr.fill((80, 50, 0, 0), special_flags=pygame.BLEND_RGBA_SUB)
-                    spr.set_alpha(max(60, alpha - 60))
+                    gk = (layer, fd.flake_idx % 9)
+                    spr = self._grounded_food_cache.get(gk)
+                    if spr is None:
+                        spr = raw_spr.copy()
+                        spr.fill((80, 50, 0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+                        spr.set_alpha(max(60, alpha - 60))
+                        self._grounded_food_cache[gk] = spr
                 else:
                     # Non-grounded: set alpha directly on the cached surface (same
                     # alpha value every time per layer — no pixel data changed).

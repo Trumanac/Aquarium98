@@ -9,6 +9,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.10] — 2026-05-27
+
+### Added
+- **Encyclopedia shoppe discovery** — fish species now unlock in the
+  Encyclopaedia when the player opens the Fish Shoppe and sees them in the
+  buy slots, rather than only on purchase. Auto-restock while the shoppe is
+  open and manual restocks also reveal the newly displayed species.
+
+### Changed
+- **`ensure_min_population` respects existing species** — the maintenance
+  spawner that keeps the tank above `min_fish` now only spawns species already
+  present in the tank. Falls back to common species only when the tank is
+  completely empty, preventing unknown fish from appearing uninvited.
+- **CPO Crayfish now eats algae and grounded food** — added `algae_eater`
+  flag so crawdads feed off algae and sunken food flakes the same way Amano
+  Shrimp do (Amano Shrimp already had this flag).
+- **`max_food` difficulty cap enforced** — food spawning now respects the
+  per-difficulty `max_food` config value (Nightmare: 16 → Easy: 40).
+  Previously the active-flake count was only bounded by the hard pool ceiling
+  of 90 regardless of difficulty.
+
+### Fixed
+- **Solitary-fish mood scan O(n²) → O(1) common case** — neighbor proximity
+  checks are now skipped entirely when no solitary-personality fish are in
+  the tank (the common case). When solitary fish exist the scan uses a
+  symmetric pass, halving comparisons.
+- **`fish_from_dict` bare key access** — `d["name"]`, `d["layer"]`, `d["x"]`,
+  `d["y"]` changed to safe `.get()` calls with fallbacks so a single
+  corrupted field no longer raises `KeyError`.
+- **Per-entry save isolation in `load_fish_state`** — a malformed fish entry
+  in `fish_state.json` now logs a warning and skips that entry instead of
+  causing the entire load to return `[]` and wiping the tank.
+
+---
+
 ## [1.0.9] — 2026-05-26
 
 ### Added

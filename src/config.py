@@ -263,9 +263,12 @@ def load_fish_state(tank_w: int, tank_h: int) -> list:
             data = json.load(fp)
         result = []
         for d in data:
-            f = fish_from_dict(d, tank_w, tank_h)
-            if f is not None:
-                result.append(f)
+            try:
+                f = fish_from_dict(d, tank_w, tank_h)
+                if f is not None:
+                    result.append(f)
+            except (KeyError, TypeError, ValueError, AttributeError) as exc:
+                log.warning("Skipping malformed fish entry in save: %s", exc)
         return result
     except (json.JSONDecodeError, KeyError, TypeError, OSError) as exc:
         log.warning("Could not load fish state: %s", exc)

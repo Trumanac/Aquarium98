@@ -133,6 +133,12 @@ class FishInfoPanel:
         # Thumbnail cache
         self._thumb: pygame.Surface | None = None
         self._thumb_fid: int = -1
+        # Pre-wrapped text (rebuilt in open())
+        self._fact_lines: list[str] = []
+        self._personality_lines: list[str] = []
+        # Title-bar gradient surface cache
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
 
     # ------------------------------------------------------------------
     def open(self, fish, screen_w: int, screen_h: int,
@@ -149,6 +155,10 @@ class FishInfoPanel:
         self._fish_sheets = fish_sheets
         self._thumb = None
         self._thumb_fid = -1
+        # Pre-wrap static text so draw() doesn't call font.size() every frame
+        _wrap_w = PW - _PAD * 2
+        self._fact_lines = _wrap(self.font, self._fact, _wrap_w)[:4]
+        self._personality_lines = _wrap(self.font, fish.personality_desc, _wrap_w)[:3]
         # Position near click, clamped to window
         px = max(0, min(screen_w - PW, click_x - PW // 2))
         py = max(0, min(screen_h - PH, click_y - 32))
@@ -279,15 +289,18 @@ class FishInfoPanel:
         pygame.draw.rect(surface, WIN_GRAY, r)
         _bevel(surface, r)
 
-        # ── Title bar gradient ────────────────────────────────────
+        # ── Title bar gradient (cached per width) ────────────────
         tb = self._title_bar
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
-                 int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
-                 int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
-            pygame.draw.line(surface, c, (tb.left, tb.top + i),
-                             (self._close_btn.left - 2, tb.top + i))
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf_w = tb.w
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+        surface.blit(self._title_surf, tb.topleft)
         title_s = fnt.render("Fish Profile", True, WIN_LIGHT)
         surface.blit(title_s, (tb.left + 5,
                                 tb.top + (tb.h - title_s.get_height()) // 2))
@@ -379,7 +392,7 @@ class FishInfoPanel:
         hdr_s = fnt.render("Did you know?", True, (0, 0, 140))
         surface.blit(hdr_s, (r.left + _PAD, dy))
         dy += fh + 2
-        for ln in _wrap(fnt, self._fact, r.w - _PAD * 2)[:4]:
+        for ln in self._fact_lines:
             ls = fnt.render(ln, True, (20, 20, 20))
             surface.blit(ls, (r.left + _PAD, dy))
             dy += fh + 1
@@ -393,7 +406,7 @@ class FishInfoPanel:
         phdr_s = fnt.render("Personality:", True, (0, 0, 140))
         surface.blit(phdr_s, (r.left + _PAD, dy))
         dy += fh + 2
-        for ln in _wrap(fnt, f.personality_desc, r.w - _PAD * 2)[:3]:
+        for ln in self._personality_lines:
             ls = fnt.render(ln, True, (40, 40, 40))
             surface.blit(ls, (r.left + _PAD, dy))
             dy += fh + 1

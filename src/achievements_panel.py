@@ -219,6 +219,9 @@ class AchievementsPanel:
         self._scroll = 0
         self._rect   = pygame.Rect(0, 0, PW, 10)
         self._close_btn = pygame.Rect(0, 0, 0, 0)
+        # Title-bar gradient cache
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
 
     def toggle(self) -> None:
         self.visible = not self.visible
@@ -274,15 +277,18 @@ class AchievementsPanel:
         pygame.draw.rect(surface, PANEL_BG, self._rect)
         _bevel(surface, self._rect)
 
-        # Title bar
+        # Title bar (gradient cached per width)
         tb = pygame.Rect(px + 3, py + 3, PW - 6, _TB_H)
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
-                 int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
-                 int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
-            pygame.draw.line(surface, c, (tb.left, tb.top + i),
-                             (tb.right - _TB_H - 2, tb.top + i))
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf_w = tb.w
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+        surface.blit(self._title_surf, tb.topleft)
         count_done = sum(1 for a in ACHIEVEMENTS if a["id"] in unlocked_set)
         title_txt = f"Achievements  {count_done}/{total}"
         ts = self.font.render(title_txt, True, WIN_LIGHT)

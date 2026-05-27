@@ -169,8 +169,11 @@ def rescale_environment(env: "Environment",
 # Food spawning
 # ---------------------------------------------------------------------------
 
+_FOOD_HARD_CAP = 90  # never exceed 3× the nominal 30-slot pool
+
 def spawn_food_at(env: Environment, ix: float, iy: float,
-                  count: int | None = None) -> int:
+                  count: int | None = None,
+                  max_active: int = _FOOD_HARD_CAP) -> int:
     """Drop 3–5 food flakes centred on interior coords (ix, iy).
 
     First pass fills a random preferred layer; second fills any free slot.
@@ -180,6 +183,11 @@ def spawn_food_at(env: Environment, ix: float, iy: float,
     """
     if count is None:
         count = random.randint(3, 5)
+    # Clamp to how many more active flakes are allowed right now
+    active_now = sum(1 for f in env.food if f.active)
+    count = min(count, max(0, max_active - active_now))
+    if count == 0:
+        return 0
     target_layer = random.randint(1, 3)
     spawned = 0
     for food in env.food:
@@ -190,7 +198,6 @@ def spawn_food_at(env: Environment, ix: float, iy: float,
         if not food.active and spawned < count:
             _init_food(food, ix, iy)
             spawned += 1
-    _FOOD_HARD_CAP = 90  # never exceed 3× the nominal 30-slot pool
     while spawned < count and len(env.food) < _FOOD_HARD_CAP:
         extra = Food(active=False, layer=target_layer)
         _init_food(extra, ix, iy)

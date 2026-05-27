@@ -760,6 +760,9 @@ class HowToPlayPanel:
         # Drag
         self._dragging = False
         self._drag_offset = (0, 0)
+        # Title-bar gradient cache
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
 
     # ------------------------------------------------------------------
     def open(self, screen_w: int, screen_h: int, page: int = 0) -> None:
@@ -898,8 +901,13 @@ class HowToPlayPanel:
         # Panel
         pygame.draw.rect(surface, PANEL_BG, r); _bevel(surface, r)
 
-        # Title bar
-        _title_gradient(surface, self._title_bar)
+        # Title bar (gradient cached per width)
+        tb = self._title_bar
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf_w = tb.w
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            _title_gradient(self._title_surf, pygame.Rect(0, 0, tb.w, tb.h))
+        surface.blit(self._title_surf, tb.topleft)
         title_label = f"How to Play  —  {_PAGES[self._page][0]}"
         ts = fnt.render(title_label, True, WIN_LIGHT)
         surface.blit(ts, (self._title_bar.left + 6,

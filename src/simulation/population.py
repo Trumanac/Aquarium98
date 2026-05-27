@@ -53,17 +53,23 @@ def try_breed(fish_list: list[Fish], tank_w: int, tank_h: int, cfg: dict,
 
 def ensure_min_population(fish_list: list[Fish], tank_w: int, tank_h: int,
                           cfg: dict) -> int:
-    """Auto-spawn common fish to maintain min_fish.
+    """Auto-spawn fish to maintain min_fish.
 
-    Only common species are used here so that rare and uncommon species can
-    only be discovered intentionally (starting tank, store purchases, breeding)
-    rather than silently appearing as maintenance fish in the background.
+    Only spawns species already present in the tank so no new species are
+    silently introduced without the player's knowledge.  Falls back to common
+    species only when the tank is completely empty (otherwise it would stay
+    empty forever).
     """
     target = int(cfg.get("min_fish", 5))
+    # Never exceed max_fish — prevents a silent cap breach when min > max
+    target = min(target, int(cfg.get("max_fish", 25)))
     added = 0
+    # Build the pool of species already in the tank; fall back to commons if empty
+    existing_species = list({id(f.sp): f.sp for f in fish_list}.values())
+    pool = existing_species if existing_species else common_species()
     while len(fish_list) < target:
         new_f = make_fish(tank_w, tank_h,
-                          species=random.choice(common_species()),
+                          species=random.choice(pool),
                           existing_names={f.name for f in fish_list},
                           lifespan_base=float(cfg.get("lifespan_base", 1814400)))
         fish_list.append(new_f)

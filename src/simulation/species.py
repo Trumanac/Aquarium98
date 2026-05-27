@@ -231,7 +231,7 @@ SPECIES: list[dict] = [
     # ── CPO Crayfish (Dwarf Mexican) ──────────────────────────────────────
     dict(name="CPO Crayfish",  body=(220, 120, 50), fin=(180, 80, 20),   accent=(255, 230, 180),
          size=7, speed=8,  sociable=False, pattern="none", aspect=0.80, fin_style="low",
-         bottom=True, crawler=True, crayfish=True, layer_pref=1,
+         bottom=True, crawler=True, algae_eater=True, crayfish=True, layer_pref=1,
          sheet="DwarfMexican_Frog.png",
          fun_facts=[
              "CPO stands for 'Cambarellus patzcuarensis orange' — a dwarf crayfish from Lake Pátzcuaro in Mexico, one of its last wild strongholds.",

@@ -97,6 +97,35 @@ class EncyclopediaPanel:
         # Row rects from last draw, used for click detection
         self._row_rects: dict[str, pygame.Rect] = {}
 
+        # ── One-time derived caches ────────────────────────────────────────
+        # Flat item list for rendering (section headers + species rows)
+        self._items: list[tuple] = []
+        prev_bucket = -1
+        for sp in self._sorted:
+            bk = _rarity_key(sp)
+            if bk != prev_bucket:
+                prev_bucket = bk
+                label, col = _BUCKETS[bk]
+                self._items.append(("header", label, col))
+            self._items.append(("row", sp))
+
+        # Row-index map: id(sp) → index into self._sorted (for alternating rows)
+        self._sp_row_idx: dict[int, int] = {
+            id(sp_): i for i, sp_ in enumerate(self._sorted)
+        }
+
+        # ── Per-frame invalidation caches ──────────────────────────────────
+        # Seen-species set: rebuilt only when cfg["seen_species"] length changes
+        self._seen_set: frozenset[str] = frozenset()
+        self._seen_len: int = -1
+        self._seen_count: int = 0
+        # total_h cache: rebuilt only when _expanded changes
+        self._total_h: int = 0
+        self._expanded_key: frozenset[str] = frozenset()
+        # Title-bar gradient surface cache
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
+
     # ------------------------------------------------------------------
     def toggle(self) -> None:
         self.visible = not self.visible
@@ -155,20 +184,27 @@ class EncyclopediaPanel:
         pygame.draw.rect(surface, PANEL_BG, self._rect)
         _bevel(surface, self._rect)
 
-        # Title bar
+        # Title bar (gradient cached per width)
         tb = pygame.Rect(px + 3, py + 3, PW - 6, _TB_H)
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
-                 int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
-                 int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
-            pygame.draw.line(surface, c,
-                             (tb.left, tb.top + i),
-                             (self._close_btn.left - 2 if self._close_btn.w else tb.right - 1,
-                              tb.top + i))
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf_w = tb.w
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+        surface.blit(self._title_surf, tb.topleft)
 
-        seen_count = sum(1 for sp in SPECIES if is_seen(cfg, sp["name"]))
-        title_txt = f"Fish Encyclopaedia  {seen_count}/{len(SPECIES)}"
+        # seen-species set: update cache only when length changes
+        raw_seen = cfg.get("seen_species") or []
+        if len(raw_seen) != self._seen_len:
+            self._seen_set = frozenset(raw_seen)
+            self._seen_len = len(raw_seen)
+            self._seen_count = sum(1 for sp in SPECIES if sp["name"] in self._seen_set)
+
+        title_txt = f"Fish Encyclopaedia  {self._seen_count}/{len(SPECIES)}"
         ts = self.font.render(title_txt, True, WIN_LIGHT)
         surface.blit(ts, (tb.left + 5, tb.top + (tb.h - ts.get_height()) // 2))
 
@@ -184,17 +220,8 @@ class EncyclopediaPanel:
         content_rect = pygame.Rect(px + 2, py + header_h, PW - 4, content_h)
         surface.set_clip(content_rect)
 
-        # Build a flat list of items to draw: section headers + species rows
-        # Pre-build so we know total height for scrollbar
-        items: list[tuple] = []   # ("header", label, col) | ("row", sp)
-        prev_bucket = -1
-        for sp in self._sorted:
-            bk = _rarity_key(sp)
-            if bk != prev_bucket:
-                prev_bucket = bk
-                label, col = _BUCKETS[bk]
-                items.append(("header", label, col))
-            items.append(("row", sp))
+        items = self._items           # built once in __init__
+        _sp_row_idx = self._sp_row_idx
 
         HEADER_H = fh + 4
         _TEXT_MAX_W = PW - _THUMB_W - _PAD * 3 - 6
@@ -226,12 +253,16 @@ class EncyclopediaPanel:
                     return max(_ROW_H, 4 + fh + 2 + fh + 4 + nlines * (fh + 2) + 8)
             return _ROW_H
 
-        _sp_row_idx = {id(sp_): i for i, sp_ in enumerate(self._sorted)}
-        self._row_rects = {}
-        total_h = sum(item_h(it) for it in items)
+        # total_h: recompute only when _expanded changes
+        exp_key = frozenset(self._expanded)
+        if exp_key != self._expanded_key:
+            self._total_h = sum(item_h(it) for it in items)
+            self._expanded_key = exp_key
+        total_h = self._total_h
         max_scroll = max(0, total_h - content_h)
         self._scroll = min(self._scroll, max_scroll)
 
+        self._row_rects = {}
         ry = py + header_h - self._scroll
         for item in items:
             ih = item_h(item)
@@ -256,7 +287,7 @@ class EncyclopediaPanel:
                 pygame.draw.rect(surface, GRID_BG if _sp_row_idx.get(id(sp), 0) % 2 == 0
                                  else PANEL_BG, row_r)
 
-                seen = is_seen(cfg, sp["name"])
+                seen = sp["name"] in self._seen_set
 
                 # Thumbnail (left) — centred both axes within the _THUMB_W×_THUMB_H cell
                 thumb = self._get_thumb(sp, fish_sheets, seen)

@@ -88,27 +88,51 @@ class SettingsDialog:
             _Check("performance_mode", "Performance Mode"),
         ]
         self.buttons: list[_Button] = [
-            _Button("Save",           "save"),
-            _Button("Cancel",         "cancel"),
+            # Laid out right-to-left (last entry = rightmost button).
+            # Save/Cancel must be last so they are always visible even when
+            # the panel is narrower than the full 5-button row.
             _Button("Reset Defaults", "reset"),
             _Button("Reset Tank...",  "reset_tank"),
             _Button("Full Reset...",  "full_reset"),
+            _Button("Cancel",         "cancel"),
+            _Button("Save",           "save"),
         ]
         self._panel = pygame.Rect(0, 0, 0, 0)
         self._check_col_x = 0
         self._row_h       = 24
         self._veil: pygame.Surface | None = None
         self._veil_size = (0, 0)
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w = 0
         # Rect for the clickable update-status button (positioned in draw)
         self._update_btn_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
 
     def open(self, cfg: dict, screen_size: tuple[int, int]) -> None:
         self.cfg_edit = dict(cfg)
+        # Default max_fish to the slider maximum when settings opens, unless
+        # Nightmare (hard-locked) or performance mode (capped at 8) applies.
+        self._apply_max_fish_cap(default_to_max=True)
         sw, sh = screen_size
         pw, ph = min(500, sw - 20), min(520, sh - 10)
         self._panel = pygame.Rect((sw - pw) // 2, (sh - ph) // 2, pw, ph)
         self._layout()
         self.visible = True
+
+    def _apply_max_fish_cap(self, *, default_to_max: bool = False) -> None:
+        """Keep max_fish consistent with difficulty + performance_mode.
+
+        Nightmare hard-locks max_fish to 10.
+        Performance mode caps max_fish at 8.
+        Otherwise, when *default_to_max* is True the slider is reset to the
+        maximum (30) so settings always opens with a full tank as the default.
+        """
+        diff = int(self.cfg_edit.get("difficulty", 2))
+        if diff == 5:   # Nightmare — hard-lock
+            self.cfg_edit["max_fish"] = DIFFICULTY_PRESETS[5]["max_fish"]
+        elif self.cfg_edit.get("performance_mode", False):
+            self.cfg_edit["max_fish"] = min(int(self.cfg_edit.get("max_fish", 8)), 8)
+        elif default_to_max:
+            self.cfg_edit["max_fish"] = 30
 
     def close(self) -> None:
         self.visible = False
@@ -184,16 +208,24 @@ class SettingsDialog:
                                   s.rect.w + 12,
                                   s.rect.h + 14)
                 if hit.collidepoint(ev.pos):
+                    # Refuse to start drag on a locked slider
+                    if s.key == "max_fish" and int(self.cfg_edit.get("difficulty", 2)) == 5:
+                        return None
                     self._dragging = s
                     self._set_from_x(s, ev.pos[0])
                     return None
             for c in self.checks:
                 # Extend hitbox across the label text and to the panel edge.
+                # Use the full row height so there are no dead-zones between rows.
                 hit_width = max(185, self._panel.right - c.rect.left - 14)
-                hit = pygame.Rect(c.rect.left, c.rect.top - 2,
-                                  hit_width, c.rect.h + 4)
+                row_top   = c.rect.top - (self._row_h - 12) // 2
+                hit = pygame.Rect(c.rect.left, row_top,
+                                  hit_width, self._row_h)
                 if hit.collidepoint(ev.pos):
                     self.cfg_edit[c.key] = not bool(self.cfg_edit.get(c.key, False))
+                    # Toggling performance_mode may cap or release the max_fish slider
+                    if c.key == "performance_mode":
+                        self._apply_max_fish_cap(default_to_max=True)
                     return None
         elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
             self._dragging = None
@@ -202,6 +234,9 @@ class SettingsDialog:
         return None
 
     def _set_from_x(self, s: _Slider, x: int) -> None:
+        # max_fish is hard-locked by Nightmare difficulty — ignore drag
+        if s.key == "max_fish" and int(self.cfg_edit.get("difficulty", 2)) == 5:
+            return
         t = (x - s.rect.left) / max(1, s.rect.w)
         t = max(0.0, min(1.0, t))
         val = s.minv + t * (s.maxv - s.minv)
@@ -211,12 +246,10 @@ class SettingsDialog:
             val = round(val / s.step) * s.step
             val = round(val, 4)
         self.cfg_edit[s.key] = val
-        # When difficulty changes, reset the Max Fish slider to the new
-        # preset default so users see a sensible starting point — they can
-        # then drag the Max Fish slider to override it before saving.
+        # When difficulty changes, sync max_fish via the cap helper so that
+        # Nightmare locks it to 10 and other difficulties default to 30.
         if s.key == "difficulty":
-            preset_mf = DIFFICULTY_PRESETS.get(int(val), {}).get("max_fish", 16)
-            self.cfg_edit["max_fish"] = preset_mf
+            self._apply_max_fish_cap(default_to_max=True)
 
     def commit_into(self, cfg: dict) -> None:
         cfg.update(self.cfg_edit)
@@ -241,22 +274,30 @@ class SettingsDialog:
 
         # Title bar
         tb = pygame.Rect(p.left + 3, p.top + 3, p.w - 6, 20)
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_DARK[0] * (1 - t) + TITLE_LIGHT[0] * t),
-                 int(TITLE_DARK[1] * (1 - t) + TITLE_LIGHT[1] * t),
-                 int(TITLE_DARK[2] * (1 - t) + TITLE_LIGHT[2] * t))
-            pygame.draw.line(screen, c, (tb.left, tb.top + i), (tb.right, tb.top + i))
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf = pygame.Surface((tb.w + 1, tb.h), pygame.SRCALPHA)
+            for i in range(tb.h):
+                t_frac = i / max(1, tb.h - 1)
+                c = (int(TITLE_DARK[0] * (1 - t_frac) + TITLE_LIGHT[0] * t_frac),
+                     int(TITLE_DARK[1] * (1 - t_frac) + TITLE_LIGHT[1] * t_frac),
+                     int(TITLE_DARK[2] * (1 - t_frac) + TITLE_LIGHT[2] * t_frac))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w, i))
+            self._title_surf_w = tb.w
+        screen.blit(self._title_surf, (tb.left, tb.top))
         t = self.font.render("Aquarium 98 - Settings", True, (255, 255, 255))
         screen.blit(t, (tb.left + 6, tb.top + (tb.h - t.get_height()) // 2))
 
         # Sliders
         fh = self.font.get_height()
+        _nightmare = int(self.cfg_edit.get("difficulty", 2)) == 5
         for s in self.sliders:
-            label = self.font.render(s.label, True, (0, 0, 0))
+            _locked = s.key == "max_fish" and _nightmare
+            label_col = WIN_MID if _locked else (0, 0, 0)
+            label = self.font.render(s.label, True, label_col)
             screen.blit(label, (p.left + 14, s.rect.centery - fh // 2))
             # Trough
-            pygame.draw.rect(screen, WIN_MID, s.rect)
+            trough_col = (160, 160, 160) if _locked else WIN_MID
+            pygame.draw.rect(screen, trough_col, s.rect)
             pygame.draw.line(screen, WIN_DARK, s.rect.topleft, (s.rect.right, s.rect.top))
             pygame.draw.line(screen, WIN_LIGHT, (s.rect.left, s.rect.bottom),
                              (s.rect.right, s.rect.bottom))
@@ -265,19 +306,25 @@ class SettingsDialog:
             t = max(0.0, min(1.0, t))
             knob_x = s.rect.left + int(t * s.rect.w)
             knob = pygame.Rect(knob_x - 4, s.rect.top - 4, 8, s.rect.h + 8)
-            pygame.draw.rect(screen, WIN_GRAY, knob)
-            pygame.draw.line(screen, WIN_LIGHT, knob.topleft, (knob.right - 1, knob.top))
-            pygame.draw.line(screen, WIN_LIGHT, knob.topleft, (knob.left, knob.bottom - 1))
-            pygame.draw.line(screen, WIN_DARK, (knob.right - 1, knob.top),
-                             (knob.right - 1, knob.bottom - 1))
-            pygame.draw.line(screen, WIN_DARK, (knob.left, knob.bottom - 1),
-                             (knob.right - 1, knob.bottom - 1))
-            # Value text — show name for difficulty, number for others
-            if s.key == "difficulty":
+            knob_col = (160, 160, 160) if _locked else WIN_GRAY
+            pygame.draw.rect(screen, knob_col, knob)
+            if not _locked:
+                pygame.draw.line(screen, WIN_LIGHT, knob.topleft, (knob.right - 1, knob.top))
+                pygame.draw.line(screen, WIN_LIGHT, knob.topleft, (knob.left, knob.bottom - 1))
+                pygame.draw.line(screen, WIN_DARK, (knob.right - 1, knob.top),
+                                 (knob.right - 1, knob.bottom - 1))
+                pygame.draw.line(screen, WIN_DARK, (knob.left, knob.bottom - 1),
+                                 (knob.right - 1, knob.bottom - 1))
+            # Value text — show name for difficulty, "Locked" for locked sliders
+            if _locked:
+                vtext = "Locked"
+                v = self.font.render(vtext, True, (140, 0, 0))
+            elif s.key == "difficulty":
                 vtext = _DIFF_NAMES.get(int(val), str(int(val)))
+                v = self.font.render(vtext, True, (0, 0, 0))
             else:
                 vtext = (f"{int(val)}" if s.integer else f"{val:.2f}")
-            v = self.font.render(vtext, True, (0, 0, 0))
+                v = self.font.render(vtext, True, (0, 0, 0))
             screen.blit(v, (s.rect.right + 6, s.rect.top - 2))
             # Difficulty description rendered on the reserved line below
             if s.key == "difficulty":

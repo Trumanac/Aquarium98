@@ -156,16 +156,24 @@ def _dl_worker(url: str) -> None:
 
 
 def launch_installer() -> bool:
-    """Launch the downloaded installer/package.  Returns True if launched."""
+    """Launch the downloaded installer/package.  Returns True if launched.
+
+    On Windows a detached PowerShell helper is also spawned that waits for the
+    installer to finish and then restarts the app automatically, so the caller
+    just needs to call ``pygame.quit()`` and exit normally.
+    """
     with _dl_lock:
         path = _dl_state.get("path", "")
     if not path or not os.path.exists(path):
         return False
     try:
         if sys.platform == "win32":
-            # Inno Setup supports /SILENT /NORESTART for a quiet install
-            subprocess.Popen([path, "/SILENT", "/NORESTART"],
-                             creationflags=subprocess.DETACHED_PROCESS)
+            # Inno Setup: /SILENT = no wizard UI, /NORESTART = don't reboot PC
+            proc = subprocess.Popen(
+                [path, "/SILENT", "/NORESTART"],
+                creationflags=subprocess.DETACHED_PROCESS,
+            )
+            _schedule_restart_win32(proc.pid)
         elif sys.platform == "darwin":
             subprocess.Popen(["open", path])
         else:
@@ -175,6 +183,33 @@ def launch_installer() -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+def _schedule_restart_win32(installer_pid: int) -> None:
+    """Spawn a detached PowerShell helper that restarts the app once the
+    Inno Setup installer exits.
+
+    The helper runs completely independently of this process:
+    1. Waits for the installer (identified by PID) to exit (up to 5 min).
+    2. Sleeps 2 s as a safety buffer.
+    3. Starts the freshly-installed executable at the same path.
+
+    This is a best-effort feature — any failure is silently ignored so it
+    never interferes with the installer launch itself.
+    """
+    exe = sys.executable  # e.g. C:\\Program Files\\Aquarium98\\aquarium98.exe
+    ps = (
+        f"Wait-Process -Id {installer_pid} -Timeout 300 -ErrorAction SilentlyContinue; "
+        f"Start-Sleep -Seconds 2; "
+        f"Start-Process \"{exe}\""
+    )
+    try:
+        subprocess.Popen(
+            ["powershell", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps],
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+        )
+    except Exception:  # noqa: BLE001
+        pass  # restart is best-effort; never block the installer launch
 
 
 # ---------------------------------------------------------------------------

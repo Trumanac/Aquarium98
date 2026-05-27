@@ -73,6 +73,11 @@ class TreasureChest:
 
     # Screen rect updated each draw() — used for click detection
     _rect: pygame.Rect = field(default_factory=lambda: pygame.Rect(0, 0, 0, 0))
+    # Glow halo surface (SRCALPHA) — reused each frame to avoid per-frame alloc
+    _glow_surf: pygame.Surface | None = field(default=None, repr=False)
+    _glow_size: tuple[int, int] = (0, 0)
+    # Scaled sprite cache: (frame_index, draw_w, draw_h) → Surface
+    _frame_cache: dict = field(default_factory=dict, repr=False)
 
     # ------------------------------------------------------------------ #
     def reset_cooldown(self, difficulty: int = 2) -> None:
@@ -160,13 +165,16 @@ class TreasureChest:
         sx = cx - dw // 2
         sy = cy - dh        # top of chest
 
-        # Extract frame from 3×3 sheet
+        # Extract frame from 3×3 sheet — use per-(fi, dw, dh) cache
         fi  = max(0, min(8, int(self.frame)))
-        sw, sh = sheet.get_size()
-        fw, fh = sw // 3, sh // 3
-        col, row = fi % 3, fi // 3
-        frame_surf = sheet.subsurface(pygame.Rect(col * fw, row * fh, fw, fh))
-        scaled = pygame.transform.smoothscale(frame_surf, (dw, dh))
+        cache_key = (fi, dw, dh)
+        if cache_key not in self._frame_cache:
+            sw, sh = sheet.get_size()
+            fw, fh = sw // 3, sh // 3
+            col, row = fi % 3, fi // 3
+            frame_surf = sheet.subsurface(pygame.Rect(col * fw, row * fh, fw, fh))
+            self._frame_cache[cache_key] = pygame.transform.smoothscale(frame_surf, (dw, dh))
+        scaled = self._frame_cache[cache_key]
 
         # Pulsing glow halo when open (drawn behind chest)
         if self.state == "open":
@@ -174,9 +182,14 @@ class TreasureChest:
             glow_a = max(0, min(255, int(25 + 50 * pulse)))
             glow_w = dw + 18
             glow_h = dh + 14
-            glow = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
-            pygame.draw.ellipse(glow, (255, 215, 50, glow_a), glow.get_rect())
-            surface.blit(glow, (sx - 9, sy - 7))
+            # Reuse the glow surface; rebuild only when size changes
+            if self._glow_surf is None or self._glow_size != (glow_w, glow_h):
+                self._glow_surf = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
+                self._glow_size = (glow_w, glow_h)
+            self._glow_surf.fill((0, 0, 0, 0))
+            pygame.draw.ellipse(self._glow_surf, (255, 215, 50, glow_a),
+                                self._glow_surf.get_rect())
+            surface.blit(self._glow_surf, (sx - 9, sy - 7))
 
         surface.blit(scaled, (sx, sy))
 

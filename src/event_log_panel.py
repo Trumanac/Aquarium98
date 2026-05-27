@@ -66,6 +66,9 @@ class EventLogPanel:
         self._close_btn = pygame.Rect(0, 0, 0, 0)
         self._rows: list[pygame.Rect] = []
         self._hover = -1
+        # Title-bar gradient cache
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
 
     def toggle(self) -> None:
         self.visible = not self.visible
@@ -126,16 +129,18 @@ class EventLogPanel:
         pygame.draw.rect(surface, WIN_GRAY, self._rect)
         _bevel(surface, self._rect)
 
-        # Title bar gradient
+        # Title bar gradient (cached per width)
         tb = pygame.Rect(px + 3, py + 3, PW - 6, _TB_H)
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
-                 int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
-                 int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
-            pygame.draw.line(surface, c, (tb.left, tb.top + i),
-                             (self._close_btn.left - 2 if self._close_btn.w else tb.right - 1,
-                              tb.top + i))
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf_w = tb.w
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+        surface.blit(self._title_surf, tb.topleft)
         ts = self.font.render("Event Log", True, WIN_LIGHT)
         surface.blit(ts, (tb.left + 5, tb.top + (tb.h - ts.get_height()) // 2))
 

@@ -923,10 +923,10 @@ def fish_from_dict(d: dict, tank_w: int, tank_h: int) -> "Fish | None":
         return None
     f = make_fish(tank_w, tank_h,
                   species=sp,
-                  name=d["name"],
-                  layer=int(d["layer"]),
-                  x=float(d["x"]),
-                  y=float(d["y"]),
+                  name=d.get("name", ""),
+                  layer=int(d.get("layer", sp.get("layer_pref", 0))),
+                  x=float(d.get("x", tank_w / 2)),
+                  y=float(d.get("y", tank_h / 2)),
                   scale=float(d.get("scale", 1.0)))
     f.heading       = float(d.get("heading", f.heading))
     f.speed         = float(d.get("speed", f.speed))

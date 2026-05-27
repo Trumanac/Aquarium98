@@ -77,3 +77,5 @@ dmypy.json
 # ── macOS autostart plist (written at runtime by startup.py) ─────────────────
 # (Do not commit — path contains user home directory)
 # ~/Library/LaunchAgents/com.trumanac.aquarium98.plist  ← outside repo anyway
+
+test_output.txt

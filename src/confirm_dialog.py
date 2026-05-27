@@ -63,18 +63,21 @@ class ConfirmDialog:
         self.visible = False
         self._title  = ""
         self._body   = ""
+        self._body_lines: list[str] = []
         self._rect   = pygame.Rect(0, 0, _PW, 120)
         self._yes_btn = pygame.Rect(0, 0, _BTN_W, _BTN_H)
         self._no_btn  = pygame.Rect(0, 0, _BTN_W, _BTN_H)
         self._yes_press = False
         self._no_press  = False
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
 
     def open(self, title: str, body: str, screen_w: int, screen_h: int) -> None:
         self._title = title
         self._body  = body
         fh = self.font.get_height()
-        lines = _wrap(self.font, body, _PW - _PAD * 2 - 32)
-        body_h = len(lines) * (fh + 2)
+        self._body_lines = _wrap(self.font, body, _PW - _PAD * 2 - 32)
+        body_h = len(self._body_lines) * (fh + 2)
         ph = _TB_H + _PAD * 3 + 24 + body_h + _BTN_H + _PAD
         self._rect = pygame.Rect(
             (screen_w - _PW) // 2,
@@ -136,14 +139,18 @@ class ConfirmDialog:
         pygame.draw.rect(surface, WIN_GRAY, r)
         _bevel(surface, r)
 
-        # Title bar gradient
+        # Title bar gradient (cached per width)
         tb = pygame.Rect(r.left + 3, r.top + 3, r.w - 6, _TB_H)
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
-                 int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
-                 int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
-            pygame.draw.line(surface, c, (tb.left, tb.top + i), (tb.right - 1, tb.top + i))
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+            self._title_surf_w = tb.w
+        surface.blit(self._title_surf, (tb.left, tb.top))
         ts = fnt.render(self._title, True, WIN_LIGHT)
         surface.blit(ts, (tb.left + 5, tb.top + (tb.h - ts.get_height()) // 2))
 
@@ -156,10 +163,9 @@ class ConfirmDialog:
                                icon_r.top  + (icon_r.h - warn_s.get_height()) // 2))
 
         # Body text
-        lines = _wrap(fnt, self._body, r.w - _PAD * 2 - icon_r.w - 8)
         tx = icon_r.right + 8
         ty = icon_r.top
-        for ln in lines:
+        for ln in self._body_lines:
             ls = fnt.render(ln, True, (0, 0, 0))
             surface.blit(ls, (tx, ty))
             ty += fh + 2
@@ -201,12 +207,15 @@ class FullResetDialog:
         self._input_rect = pygame.Rect(0, 0, self._INP_W, 20)
         self._cursor_blink = 0.0
         self._cursor_vis   = True
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
+        self._prompt_lines: list[str] = []
 
     def open(self, screen_w: int, screen_h: int) -> None:
         self._text = ""
         fh = self.font.get_height()
-        prompt_lines = _wrap(self.font, self._PROMPT, self._PW - _PAD * 2 - 32)
-        content_h = max(24, len(prompt_lines) * (fh + 2))
+        self._prompt_lines = _wrap(self.font, self._PROMPT, self._PW - _PAD * 2 - 32)
+        content_h = max(24, len(self._prompt_lines) * (fh + 2))
         ph = _TB_H + _PAD * 2 + content_h + 8 + 22 + _PAD + _BTN_H + _PAD
         self._rect = pygame.Rect(
             (screen_w - self._PW) // 2,
@@ -298,14 +307,18 @@ class FullResetDialog:
         pygame.draw.rect(surface, WIN_GRAY, r)
         _bevel(surface, r)
 
-        # Title bar
+        # Title bar (cached per width)
         tb = pygame.Rect(r.left + 3, r.top + 3, r.w - 6, _TB_H)
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
-                 int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
-                 int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
-            pygame.draw.line(surface, c, (tb.left, tb.top + i), (tb.right - 1, tb.top + i))
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+            self._title_surf_w = tb.w
+        surface.blit(self._title_surf, (tb.left, tb.top))
         ts = fnt.render("Full Reset — Erase All Data", True, WIN_LIGHT)
         surface.blit(ts, (tb.left + 5, tb.top + (tb.h - ts.get_height()) // 2))
 
@@ -317,8 +330,8 @@ class FullResetDialog:
         surface.blit(ws, (icon_r.left + (icon_r.w - ws.get_width()) // 2,
                           icon_r.top  + (icon_r.h - ws.get_height()) // 2))
 
-        # Prompt text (to the right of the warning icon)
-        lines = _wrap(fnt, self._PROMPT, r.w - _PAD * 2 - icon_r.w - 8)
+        # Prompt text (pre-wrapped in open())
+        lines = self._prompt_lines
         ty = icon_r.top
         for ln in lines:
             ls = fnt.render(ln, True, (140, 20, 20))
@@ -384,6 +397,8 @@ class AboutDialog:
         self._ok_press = False
         self._icon: pygame.Surface | None = None
         self._icon_loaded = False
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
 
     def _ensure_icon(self) -> None:
         if self._icon_loaded:
@@ -455,15 +470,18 @@ class AboutDialog:
         pygame.draw.rect(surface, WIN_GRAY, r)
         _bevel(surface, r)
 
-        # Title bar gradient
+        # Title bar gradient (cached per width)
         tb = pygame.Rect(r.left + 3, r.top + 3, r.w - 6, _TB_H)
-        for i in range(tb.h):
-            t = i / max(1, tb.h - 1)
-            c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
-                 int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
-                 int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
-            pygame.draw.line(surface, c,
-                             (tb.left, tb.top + i), (tb.right - 1, tb.top + i))
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+            self._title_surf_w = tb.w
+        surface.blit(self._title_surf, (tb.left, tb.top))
         ts = fnt.render("About Aquarium 98", True, WIN_LIGHT)
         surface.blit(ts, (tb.left + 5, tb.top + (tb.h - ts.get_height()) // 2))
 
