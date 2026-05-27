@@ -62,8 +62,8 @@ from src.fish_roster_panel import FishRosterPanel
 from src import startup as startup_mod
 from src.splash import show_splash
 from src.simulation.environment import (
-    add_food, clean_algae, make_environment, pop_bubble_at, spawn_chest_burst,
-    spawn_food_at, update_environment,
+    add_food, clean_algae, make_environment, pop_bubble_at, rescale_environment,
+    spawn_chest_burst, spawn_food_at, update_environment,
 )
 from src.simulation.fish import make_fish, update_biology, update_fish, update_mood
 from src.simulation.species import SPECIES
@@ -1149,7 +1149,17 @@ def main() -> int:
                             win_mod.set_position(sdl_win, *_saved_pos)
                         renderer.surface = surface
                         renderer._static_bg = None
+                        _old_tw, _old_th = env.tank_w, env.tank_h
                         tr = renderer.compute_tank_rect()
+                        # Rescale all entity positions to the new tank space so
+                        # fish/bubbles/food fill the larger tank instead of
+                        # clustering in the old top-left area.
+                        rescale_environment(env, _old_tw, _old_th, tr.w, tr.h)
+                        for _rf in fish_list:
+                            _rf.x = max(0.0, min(float(tr.w),
+                                                 _rf.x * tr.w / max(1, _old_tw)))
+                            _rf.y = max(0.0, min(float(tr.h),
+                                                 _rf.y * tr.h / max(1, _old_th)))
                         env.tank_w = tr.w
                         env.tank_h = tr.h
                         # Discard any MOUSEMOTION events that SDL queued as a

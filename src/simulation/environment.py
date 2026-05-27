@@ -144,6 +144,28 @@ def make_environment(tank_w: int, tank_h: int) -> Environment:
 
 
 # ---------------------------------------------------------------------------
+# Resize rescaling
+# ---------------------------------------------------------------------------
+
+def rescale_environment(env: "Environment",
+                        old_w: int, old_h: int,
+                        new_w: int, new_h: int) -> None:
+    """Proportionally rescale all bubble and food positions when the tank
+    is resized.  Must be called *before* env.tank_w/tank_h are updated."""
+    if old_w <= 0 or old_h <= 0:
+        return
+    sx = new_w / old_w
+    sy = new_h / old_h
+    for b in env.bubbles:
+        b.x = max(0.0, min(float(new_w), b.x * sx))
+        b.y = max(0.0, min(float(new_h), b.y * sy))
+    for f in env.food:
+        if f.active:
+            f.x = max(0.0, min(float(new_w), f.x * sx))
+            f.y = max(0.0, min(float(new_h), f.y * sy))
+
+
+# ---------------------------------------------------------------------------
 # Food spawning
 # ---------------------------------------------------------------------------
 
