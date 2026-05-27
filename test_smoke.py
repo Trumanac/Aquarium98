@@ -188,6 +188,32 @@ def test_spawn_food_appends_extra_flakes_when_full():
     print("       OK — spawn_food_at grows the food pool when full")
 
 
+def test_title_bar_on_screen():
+    """_title_bar_on_screen must correctly classify on- and off-screen positions."""
+    import pygame  # type: ignore[import]
+    pygame.display.init()
+
+    from src.window import _title_bar_on_screen  # noqa: PLC0415
+
+    # Primary monitor top-left — always on screen
+    assert _title_bar_on_screen(0, 0, 512) is True, "(0, 0) should be on screen"
+
+    # Reasonable primary monitor position
+    assert _title_bar_on_screen(200, 150, 512) is True, "(200, 150) should be on screen"
+
+    # Wildly off screen — should return False
+    assert _title_bar_on_screen(99999, 99999, 512) is False, "(99999, 99999) should be off screen"
+    assert _title_bar_on_screen(-99999, -99999, 512) is False, "(-99999, -99999) should be off screen"
+
+    # Return value must always be a plain bool
+    result = _title_bar_on_screen(100, 100, 512)
+    assert isinstance(result, bool), f"Expected bool, got {type(result)}"
+
+    print("       OK — _title_bar_on_screen classifies positions correctly")
+
+    pygame.display.quit()
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -198,6 +224,8 @@ if __name__ == "__main__":
     _run(test_volume_clamps_correctly)
     _run(test_mute_sets_effective_volume_to_zero)
     _run(test_parse_version_formats)
+    _run(test_spawn_food_appends_extra_flakes_when_full)
+    _run(test_title_bar_on_screen)
 
     print()
     print("=" * 50)
