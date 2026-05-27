@@ -9,6 +9,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.9] — 2026-05-26
+
+### Added
+- **Max Fish slider** — new slider in the Settings dialog (range 4–30) lets
+  players set their own fish cap independently of the difficulty preset.
+  Changing the difficulty slider resets Max Fish to the preset default as a
+  sensible starting point; players can then override it before saving.
+  The chosen value survives app updates and reinstalls (lives in the user
+  config dir, separate from the install directory).
+
+### Fixed
+- **Double castle randomisation on full reset** — `_do_reset` now sets
+  `cfg["_tank_initialized"] = True` after randomising decor, preventing a
+  second randomisation on the very next startup (previously `_tank_initialized`
+  was absent from the post-full-reset config, causing the startup code to
+  re-roll the castle choice).
+- **macOS DMG build (`hdiutil: create failed — Resource busy`)** — CI runner
+  fix: added `.metadata_never_index` sentinel, switched `cp -r` to `ditto`,
+  and added a 3-attempt retry loop in `create_dmg.sh`.
+- **Fish/bubbles/food cluster in top-left after window resize** — entity
+  positions are now proportionally rescaled to the new tank dimensions in the
+  `WINDOWRESIZED` handler via `rescale_environment()`.
+
+### Changed
+- **Fish caps raised** — difficulty preset maximums increased so larger tanks
+  feel alive at bigger window sizes: Peaceful 30 (was 18), Normal 25 (was 16),
+  Hard 20 (was 14), Brutal 15 (was 12). Nightmare stays at 10.
+  Hard cap (`SLOT_CAPS["max_fish"]`) raised from 18 to 30.
+- **Difficulty preset no longer overwrites `max_fish`** — `_validate()` now
+  applies only rate variables (hunger, breed, algae, etc.) from the preset.
+  `max_fish` is clamped to a valid range but preserves the user's saved value
+  across difficulty changes and app updates.
+- **`config.default.json`** — added explicit `max_fish: 25` (Normal default)
+  so the `_migrate()` path is self-documenting for new config keys.
+
+### Optimised
+- Stale `cfg.get("max_fish", 14/16)` fallback defaults updated to `25`
+  throughout `aquarium.py`, `achievements_panel.py`, `population.py`, and
+  `environment.py` (cosmetic — `_validate()` always sets the key before these
+  are reached, but the stale values were misleading).
+
+---
+
 ## [1.0.8] — 2026-05-27
 
 ### Fixed

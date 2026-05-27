@@ -302,7 +302,7 @@ def update_environment(env: Environment, dt: float, cfg: dict,
 
     # ---- Algae growth (FishPOC.lua formula) ----
     rate = max(0.0, float(cfg.get("algae_rate", 0.30)))
-    max_fish = max(1, int(cfg.get("max_fish", 14)))
+    max_fish = max(1, int(cfg.get("max_fish", 25)))
     density = fish_count / max_fish
     # Each algae eater suppresses background growth ~18 %; capped at 75 % total
     growth_suppression = min(0.75, algae_eater_count * 0.18)

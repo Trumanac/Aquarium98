@@ -18,7 +18,7 @@ def cull_dead(fish_list: list[Fish]) -> int:
 def try_breed(fish_list: list[Fish], tank_w: int, tank_h: int, cfg: dict,
               dt: float) -> Fish | None:
     """Adult pairs of same species with low hunger may produce one juvenile."""
-    if len(fish_list) >= int(cfg.get("max_fish", 14)):
+    if len(fish_list) >= int(cfg.get("max_fish", 25)):
         return None
     rate = float(cfg.get("breed_rate", 0.70))
     if rate <= 0:

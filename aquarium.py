@@ -30,7 +30,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.8"
+    APP_VERSION = "1.0.9"
 
 import pygame
 
@@ -330,7 +330,7 @@ def main() -> int:
         # Restore fish from previous session when persist_state is on
         if cfg.get("persist_state", True):
             fish_list = cfg_mod.load_fish_state(tr.w, tr.h)
-            max_fish = int(cfg.get("max_fish", 16))
+            max_fish = int(cfg.get("max_fish", 25))
             if len(fish_list) > max_fish:
                 fish_list = fish_list[:max_fish]
             for f in fish_list:
@@ -549,6 +549,10 @@ def main() -> int:
                     mark_seen(cfg, f_reset.sp.get("name", ""))
                 # Randomise decor for the freshly reset tank
                 cfg["castle_choice"] = random.randint(1, 5)
+                # Mark the tank as initialised so the next startup does not
+                # re-randomise the castle (avoids double-randomisation when the
+                # user exits shortly after a full reset).
+                cfg["_tank_initialized"] = True
                 # Persist immediately — don't wait for the 5-second periodic save.
                 # This ensures a crash or fast-close can never leave fish_state.json
                 # empty/missing while config.json still reflects the pre-reset state.
@@ -1196,7 +1200,7 @@ def main() -> int:
                                        float(cfg.get("age_rate", 1.0)))
                         maybe_change_layer(f, env.tank_h, sim_dt)
                     # Mood update: count near-fish for each fish (solitary stress)
-                    max_fish_cap = int(cfg.get("max_fish", 14))
+                    max_fish_cap = int(cfg.get("max_fish", 25))
                     for f in fish_list:
                         near = sum(
                             1 for g in fish_list

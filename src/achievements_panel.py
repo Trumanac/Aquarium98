@@ -102,7 +102,7 @@ def check_achievements(cfg: dict, fish_list: list) -> list[str]:
         _try("streak_30")
 
     # Population
-    max_fish = int(cfg.get("max_fish", 14))
+    max_fish = int(cfg.get("max_fish", 25))
     if len(fish_list) >= max_fish:
         _try("tank_full")
 
