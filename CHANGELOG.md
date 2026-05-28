@@ -9,6 +9,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.11] — 2026-05-27
+
+### Added
+- **Sim Speed slider in Settings** — new *Sim Speed* slider (0.25× – 4.00×)
+  exposes the `time_scale` config key so players can slow down or speed up the
+  simulation without editing JSON.
+- **Sell fish from the Fish Profile** — a *Sell (Nc)* button now appears in
+  the bottom-left of the Fish Profile popup. Clicking it removes the fish,
+  awards coins, and logs the sale — no need to open the Shoppe's sell list.
+- **Algae danger warning** — the status bar shows a one-time warning when
+  algae reaches 80 %. The warning resets once the tank drops below 70 %.
+- **Critical-health fish warning** — the status bar notifies the player when
+  any fish's HP falls below 20 %. The warning clears once the fish recovers
+  above 40 % HP or is removed from the tank.
+- **Panel keyboard shortcuts** — five new hotkeys to quickly toggle overlay
+  panels without a mouse:
+  - `G` — Graveyard
+  - `I` — Encyclopaedia
+  - `L` — Event Log
+  - `A` — Achievements
+
+### Fixed
+- **Cursor hotspot corrected (`hx` 7 → 17)** — the normal-cursor sprite's
+  visual fingertip is at pixel 17 from the left edge; the hotspot was set to
+  7, causing all click positions to register ~10 px left of the cursor.
+  Settings checkboxes were therefore unreachable without the compensating
+  hit-area extension also added in this release.
+- **Settings checkbox hit area extended 10 px left** — provides a safety
+  margin so clicks that land just before the checkbox rect still register.
+- **`_persist_state_now` spurious WARNING on every exit** — `surface.get_size()`
+  was called via `atexit` after `pygame.quit()` had already torn down the
+  display. Now guarded with `pygame.display.get_init()`.
+- **`rescale_environment` new-dimension guard** — added `new_w ≤ 0 or new_h ≤ 0`
+  guard alongside the existing old-dimension guard; without it an extreme
+  resize edge case would zero out all entity positions.
+- **`fish_from_dict` species-miss logging** — unknown-species path now logs
+  both the species name and fish name at WARNING level instead of silently
+  returning `None`.
+- **`MIN_H` aligned with config floor (366 → 406)** — the SDL resize minimum
+  was 366 but `config.py` clamps loaded `window_h` to 406; any height between
+  366–405 set by the user would silently snap taller on next launch.
+- **Removed dead `_tint()` helper in `renderer.py`** — defined but never
+  called anywhere in the codebase.
+
+---
+
 ## [1.0.10] — 2026-05-27
 
 ### Added

@@ -152,7 +152,7 @@ def rescale_environment(env: "Environment",
                         new_w: int, new_h: int) -> None:
     """Proportionally rescale all bubble and food positions when the tank
     is resized.  Must be called *before* env.tank_w/tank_h are updated."""
-    if old_w <= 0 or old_h <= 0:
+    if old_w <= 0 or old_h <= 0 or new_w <= 0 or new_h <= 0:
         return
     sx = new_w / old_w
     sy = new_h / old_h

@@ -16,7 +16,7 @@ import pygame
 
 log = logging.getLogger(__name__)
 
-MIN_W, MIN_H = 384, 366    # MIN_H = last toolbar btn bottom (344) + status bar (22)
+MIN_W, MIN_H = 384, 406    # MIN_H matches config.py floor; absolute UI minimum is 344+22=366 but 406 gives tank breathing room
 MAX_W, MAX_H = 1200, 800   # practical desktop limit
 ASPECT = 16 / 10   # actually 8:5 since tank is roughly 4:3 with chrome
 # We honor user dragging freely but clamp inside MIN/MAX above.

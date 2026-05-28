@@ -114,8 +114,22 @@ TB_BTN_SIZE     = 36
 TB_BTN_SPACING  = 40
 TB_BTN_KEYS     = (
     'food', 'clean', 'roster', 'event_log',
-    'achievements', 'encyclopedia', 'graveyard', 'store'
+    'achievements', 'encyclopedia', 'graveyard', 'store', 'settings'
 )
+
+# Keyboard shortcut labels shown as tiny overlays on toolbar buttons.
+# Only buttons that have a hotkey get an entry.
+TB_BTN_HOTKEYS: dict[str, str] = {
+    'food':         'F',
+    'clean':        'C',
+    'roster':       'L',
+    'event_log':    'X',
+    'achievements': 'A',
+    'encyclopedia': 'E',
+    'graveyard':    'G',
+    'store':        'S',
+    'settings':     'Z',
+}
 
 # Decoration geometry at reference interior (448×274)
 _REF_W = 448
@@ -164,16 +178,6 @@ def _load_opaque(path: Path) -> pygame.Surface | None:
         return None
 
 
-def _tint(surf: pygame.Surface, color: tuple[int,int,int], alpha: int) -> pygame.Surface:
-    """Return a new surface: colour-multiplied and globally alpha-set."""
-    result = surf.copy()
-    tint_surf = pygame.Surface(result.get_size())
-    tint_surf.fill(color)
-    result.blit(tint_surf, (0, 0), special_flags=pygame.BLEND_MULT)
-    result.set_alpha(alpha)
-    return result
-
-
 # ---------------------------------------------------------------------------
 # SpriteAssets
 # ---------------------------------------------------------------------------
@@ -191,10 +195,11 @@ _BTN_FRAME_DEFS = [
     (2203, 138),  # 8: scroll_up
     (2345, 153),  # 9: scroll_dn
     (2504, 98),   # 10: empty
+    (2611, 251),  # 11: settings
 ]
 _BTN_NAMES = [
     'food', 'clean', 'roster', 'event_log', 'achievements',
-    'encyclopedia', 'graveyard', 'store', 'scroll_up', 'scroll_dn', 'empty',
+    'encyclopedia', 'graveyard', 'store', 'scroll_up', 'scroll_dn', 'empty', 'settings',
 ]
 
 class SpriteAssets:
@@ -522,6 +527,20 @@ class Renderer:
         self.surface = surface
         self.font = font
         self.assets = SpriteAssets()
+
+        # Small font for hotkey overlays on toolbar buttons (size 9)
+        _fonts_dir = ROOT / "assets" / "fonts"
+        self._key_font: pygame.font.Font | None = None
+        for _name in ("MSW98UI-Regular.otf", "retro.ttf"):
+            _cand = _fonts_dir / _name
+            if _cand.exists():
+                try:
+                    self._key_font = pygame.font.Font(str(_cand), 11)
+                    break
+                except pygame.error:
+                    pass
+        if self._key_font is None:
+            self._key_font = pygame.font.SysFont("tahoma,mssansserif", 11, bold=True)
 
         # Static background cache (water + sand + tank_bg; rebuild on resize only)
         self._static_bg: pygame.Surface | None = None
@@ -1218,6 +1237,15 @@ class Renderer:
             y = TB_BTN_Y_START + idx * TB_BTN_SPACING
             pressed = getattr(self, f"{key}_mode", False)
             self._draw_tb_btn(key, TB_BTN_X, y, pressed=pressed)
+            # Hotkey letter overlay — bottom-left corner of the button
+            hotkey = TB_BTN_HOTKEYS.get(key)
+            if hotkey and self._key_font is not None:
+                ks_shadow = self._key_font.render(hotkey, True, (10, 10, 10))
+                ks_label  = self._key_font.render(hotkey, True, (255, 255, 255))
+                kx = TB_BTN_X + 2
+                ky = y + TB_BTN_SIZE - ks_label.get_height() - 1
+                self.surface.blit(ks_shadow, (kx + 1, ky + 1))
+                self.surface.blit(ks_label,  (kx, ky))
 
     def _draw_status_bar(self, paused: bool, locked: bool, stats: dict,
                          status_msg: str = "") -> None:

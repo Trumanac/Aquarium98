@@ -28,7 +28,7 @@ _CURSOR_H    = 48     # scaled sprite height in pixels
 # Subtracted from mouse position when blitting so the hotspot lands on the cursor.
 _HOTSPOTS: dict[str, tuple[int, int]] = {
     # Measured from sprite art after scaling to 48 px height.
-    "normal": (7, 11),   # glove fingertip
+    "normal": (17, 11),   # glove fingertip
     "feed":   (14, 20),  # shaker cap top
     "clean":  (9, 21),   # sponge leading corner
 }

@@ -164,7 +164,7 @@ def _validate(cfg: dict[str, Any]) -> dict[str, Any]:
     cfg["opacity"] = max(0.3, min(1.0, op))
 
     cfg["window_w"] = max(384, min(1200, int(cfg.get("window_w", 512))))
-    cfg["window_h"] = max(366, min(800, int(cfg.get("window_h", 320))))
+    cfg["window_h"] = max(406, min(800, int(cfg.get("window_h", 406))))
 
     cfg["bubble_rate"] = max(0.0, min(4.0, float(cfg.get("bubble_rate", 1.0))))
 

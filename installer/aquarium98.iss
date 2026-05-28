@@ -15,7 +15,7 @@
 ; Uninstaller is registered automatically.
 
 #define MyAppName      "Aquarium 98"
-#define MyAppVersion   "1.0.10"
+#define MyAppVersion   "1.0.11"
 #define MyAppPublisher "Truman AC"
 #define MyAppURL       "https://github.com/trumanac/aquarium98"
 #define MyAppExeName   "Aquarium98.exe"
@@ -96,9 +96,12 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
   Flags: uninsdeletevalue; Tasks: startuplaunch
 
 [Run]
-; Offer to launch after install
+; Launch after install.
+; postinstall  → shows as a ticked checkbox on the wizard's final page (interactive).
+; nowait       → don't block the installer waiting for the app to exit.
+; Omitting skipifsilent means this entry also fires during /SILENT auto-updates.
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; \
-  Flags: nowait postinstall skipifsilent
+  Flags: nowait postinstall
 
 [UninstallRun]
 ; Kill any running instance before uninstalling (best-effort)

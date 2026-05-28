@@ -10,6 +10,7 @@ from __future__ import annotations
 import random
 import time
 import pygame
+from .coin_system import fish_sell_price
 
 WIN_GRAY  = (192, 192, 192)
 WIN_LIGHT = (255, 255, 255)
@@ -130,6 +131,7 @@ class FishInfoPanel:
         self._input_rect = pygame.Rect(0, 0, 0, 0)
         self._save_btn   = pygame.Rect(0, 0, 0, 0)
         self._close2_btn = pygame.Rect(0, 0, 0, 0)
+        self._sell_btn   = pygame.Rect(0, 0, 0, 0)
         # Thumbnail cache
         self._thumb: pygame.Surface | None = None
         self._thumb_fid: int = -1
@@ -190,6 +192,7 @@ class FishInfoPanel:
         # Bottom buttons
         self._save_btn   = pygame.Rect(r.right - _PAD - 144, r.bottom - _PAD - 22, 68, 22)
         self._close2_btn = pygame.Rect(r.right - _PAD - 70,  r.bottom - _PAD - 22, 64, 22)
+        self._sell_btn   = pygame.Rect(r.left  + _PAD,        r.bottom - _PAD - 22, 80, 22)
 
     # ------------------------------------------------------------------
     def handle_event(self, ev: pygame.event.Event) -> str | None:
@@ -219,6 +222,8 @@ class FishInfoPanel:
             # Bottom buttons
             if self._close2_btn.inflate(0, 8).collidepoint(ev.pos):
                 self.close(); return "close_inside"
+            if self._sell_btn.inflate(0, 8).collidepoint(ev.pos):
+                return "sell"
             if self._save_btn.inflate(0, 8).collidepoint(ev.pos):
                 old_name = self.fish.name if self.fish else ""
                 self._apply_rename()
@@ -461,4 +466,13 @@ class FishInfoPanel:
             bs = fnt.render(label, True, (0, 0, 0))
             surface.blit(bs, (btn.left + (btn.w - bs.get_width()) // 2,
                                btn.top  + (btn.h - bs.get_height()) // 2))
+
+        # Sell button (left side of button row)
+        sell_price = fish_sell_price(f)
+        sell_label = f"Sell ({sell_price}c)"
+        pygame.draw.rect(surface, WIN_GRAY, self._sell_btn)
+        _bevel(surface, self._sell_btn)
+        ss = fnt.render(sell_label, True, (0, 100, 0))
+        surface.blit(ss, (self._sell_btn.left + (self._sell_btn.w - ss.get_width()) // 2,
+                          self._sell_btn.top  + (self._sell_btn.h - ss.get_height()) // 2))
 

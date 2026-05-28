@@ -109,9 +109,10 @@ class SettingsDialog:
 
     def open(self, cfg: dict, screen_size: tuple[int, int]) -> None:
         self.cfg_edit = dict(cfg)
-        # Default max_fish to the slider maximum when settings opens, unless
-        # Nightmare (hard-locked) or performance mode (capped at 8) applies.
-        self._apply_max_fish_cap(default_to_max=True)
+        # Apply caps (nightmare / performance mode) without overriding the
+        # user's saved max_fish value — pass default_to_max=False so an
+        # already-saved preference is respected.
+        self._apply_max_fish_cap(default_to_max=False)
         sw, sh = screen_size
         pw, ph = min(500, sw - 20), min(520, sh - 10)
         self._panel = pygame.Rect((sw - pw) // 2, (sh - ph) // 2, pw, ph)
@@ -209,17 +210,22 @@ class SettingsDialog:
                                   s.rect.h + 14)
                 if hit.collidepoint(ev.pos):
                     # Refuse to start drag on a locked slider
-                    if s.key == "max_fish" and int(self.cfg_edit.get("difficulty", 2)) == 5:
+                    if s.key == "max_fish" and (
+                        int(self.cfg_edit.get("difficulty", 2)) == 5
+                        or self.cfg_edit.get("performance_mode", False)
+                    ):
                         return None
                     self._dragging = s
                     self._set_from_x(s, ev.pos[0])
                     return None
             for c in self.checks:
-                # Extend hitbox across the label text and to the panel edge.
+                # Extend hitbox left by 10px (clicks often land just before the
+                # box rect), across the label text, and to the panel edge.
                 # Use the full row height so there are no dead-zones between rows.
-                hit_width = max(185, self._panel.right - c.rect.left - 14)
+                hit_left  = c.rect.left - 10
+                hit_width = max(195, self._panel.right - hit_left - 14)
                 row_top   = c.rect.top - (self._row_h - 12) // 2
-                hit = pygame.Rect(c.rect.left, row_top,
+                hit = pygame.Rect(hit_left, row_top,
                                   hit_width, self._row_h)
                 if hit.collidepoint(ev.pos):
                     self.cfg_edit[c.key] = not bool(self.cfg_edit.get(c.key, False))
@@ -234,8 +240,11 @@ class SettingsDialog:
         return None
 
     def _set_from_x(self, s: _Slider, x: int) -> None:
-        # max_fish is hard-locked by Nightmare difficulty — ignore drag
-        if s.key == "max_fish" and int(self.cfg_edit.get("difficulty", 2)) == 5:
+        # max_fish is hard-locked by Nightmare difficulty or Performance Mode
+        if s.key == "max_fish" and (
+            int(self.cfg_edit.get("difficulty", 2)) == 5
+            or self.cfg_edit.get("performance_mode", False)
+        ):
             return
         t = (x - s.rect.left) / max(1, s.rect.w)
         t = max(0.0, min(1.0, t))
@@ -290,8 +299,9 @@ class SettingsDialog:
         # Sliders
         fh = self.font.get_height()
         _nightmare = int(self.cfg_edit.get("difficulty", 2)) == 5
+        _perf_mode = bool(self.cfg_edit.get("performance_mode", False))
         for s in self.sliders:
-            _locked = s.key == "max_fish" and _nightmare
+            _locked = s.key == "max_fish" and (_nightmare or _perf_mode)
             label_col = WIN_MID if _locked else (0, 0, 0)
             label = self.font.render(s.label, True, label_col)
             screen.blit(label, (p.left + 14, s.rect.centery - fh // 2))

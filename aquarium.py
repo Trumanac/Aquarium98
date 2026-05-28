@@ -30,7 +30,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.10"
+    APP_VERSION = "1.0.11"
 
 import pygame
 
@@ -48,7 +48,7 @@ from src.context_menu import ContextMenu, feed_menu
 from src.icon_gen import ensure_icons
 from src.renderer import (
     Renderer, PAD_B, fish_screen_rect,
-    toolbar_button_rect,
+    toolbar_button_rect, TB_BTN_KEYS,
 )
 from src.settings_dialog import SettingsDialog
 from src.confirm_dialog import ConfirmDialog, FullResetDialog, AboutDialog, CrashDialog
@@ -412,6 +412,9 @@ def main() -> int:
         roster_mode = False
         store_mode  = False
         stat_accum  = 0.0   # real-time seconds; flushed to cfg every minute
+        # Warning state — prevents repeated notifications for the same condition
+        _algae_danger_warned: bool = False
+        _health_warned: set[int] = set()   # id(f) for fish already warned this episode
         # Cache encyclopedia_seen count — recomputed only when seen_species length changes
         _seen_count_cache: int = -1
         _encyclopedia_seen: int = 0
@@ -432,16 +435,16 @@ def main() -> int:
             "Press Space to pause/unpause the simulation.",
             "Press F to instantly drop food at the centre of the tank.",
             "Press C to instantly scrub algae from the tank.",
-            "Press E to open the Settings dialog.",
+            "Press Z to open the Settings dialog.",
             "Pop bubbles with a click — you might earn a coin!",
             "Fish need food to breed. Keep them well-fed!",
             "Check the Achievements panel for coin rewards.",
             "Click the treasure chest when it appears — don't miss it!",
             "The Graveyard honours every fish that has passed.",
-            "Open the Encyclopedia to browse all known species.",
+            "Press E to browse the Encyclopaedia.",
             "Hard difficulty removes the safety-net respawn. Careful!",
             "Drag the window by its title bar to reposition it.",
-            "The Fish Shoppe restocks with new species over time.",
+            "Press S to open the Fish Shoppe.",
             "Click a fish to view its full profile and rename it.",
             "Daily login streaks add to your progress. Come back tomorrow!",
         ]
@@ -453,12 +456,13 @@ def main() -> int:
         _tb_tips = [
             (pygame.Rect(6,  28, 36, 36), "Feed fish  [F]"),
             (pygame.Rect(6,  68, 36, 36), "Clean algae  [C]"),
-            (pygame.Rect(6, 108, 36, 36), "Fish List"),
-            (pygame.Rect(6, 148, 36, 36), "Event Log"),
-            (pygame.Rect(6, 188, 36, 36), "Achievements"),
-            (pygame.Rect(6, 228, 36, 36), "Encyclopaedia"),
-            (pygame.Rect(6, 268, 36, 36), "Graveyard"),
-            (pygame.Rect(6, 308, 36, 36), "Fish Shoppe"),
+            (pygame.Rect(6, 108, 36, 36), "Fish List  [L]"),
+            (pygame.Rect(6, 148, 36, 36), "Event Log  [X]"),
+            (pygame.Rect(6, 188, 36, 36), "Achievements  [A]"),
+            (pygame.Rect(6, 228, 36, 36), "Encyclopaedia  [E]"),
+            (pygame.Rect(6, 268, 36, 36), "Graveyard  [G]"),
+            (pygame.Rect(6, 308, 36, 36), "Fish Shoppe  [S]"),
+            (pygame.Rect(6, 348, 36, 36), "Settings  [Z]"),
         ]
         _size_tips: list[tuple[pygame.Rect, str]] = []
         _tooltip_size = (0, 0)
@@ -514,11 +518,15 @@ def main() -> int:
             data between the 2-second periodic saves.
             """
             try:
-                pos = win_mod.get_position(sdl_win)
-                if pos is not None:
-                    cfg["window_x"], cfg["window_y"] = pos
-                _w, _h = surface.get_size()
-                cfg["window_w"], cfg["window_h"] = _w, _h
+                # Only query live window state while the display is still up.
+                # When called via atexit after pygame.quit() the shutdown block
+                # has already persisted the correct values, so we just re-save.
+                if pygame.display.get_init():
+                    pos = win_mod.get_position(sdl_win)
+                    if pos is not None:
+                        cfg["window_x"], cfg["window_y"] = pos
+                    _w, _h = surface.get_size()
+                    cfg["window_w"], cfg["window_h"] = _w, _h
                 cfg_mod.save(cfg)
                 if cfg.get("persist_state", True):
                     cfg_mod.save_fish_state(fish_list)
@@ -779,35 +787,54 @@ def main() -> int:
                     continue
 
                 if settings.visible:
-                    result = settings.handle_event(ev)
-                    if result == "save":
-                        settings.commit_into(cfg)
-                        # Re-validate after slider changes
-                        cfg.update(cfg_mod.validate(cfg))
-                        win_mod.set_opacity(sdl_win, cfg.get("opacity", 1.0))
-                        win_mod.set_always_on_top(sdl_win, bool(cfg.get("always_on_top", False)))
-                        startup_mod.set_startup(bool(cfg.get("open_on_startup", False)))
-                        cfg_mod.save(cfg)
-                    elif result == "reset":
-                        cfg.clear()
-                        cfg.update(cfg_mod.reset_defaults())
-                        win_mod.set_opacity(sdl_win, cfg.get("opacity", 1.0))
-                        win_mod.set_always_on_top(sdl_win, bool(cfg.get("always_on_top", False)))
-                    elif result == "full_reset":
-                        full_reset_dlg.open(*surface.get_size())
-                    elif result == "reset_tank":
-                        do_action("reset")
-                    elif result == "check_updates":
-                        update_check.recheck(APP_VERSION)
-                    elif result == "download_update":
-                        update_check.start_download()
-                    elif result == "install_update":
-                        if update_check.launch_installer():
-                            pygame.quit()
-                            return 0
-                        else:
-                            set_status("Could not launch installer — download may be corrupt.")
-                    continue
+                    # Toolbar button clicks dismiss settings.  The gear button
+                    # (settings) acts as a toggle — just close.  Any other toolbar
+                    # button closes settings first, then falls through so its own
+                    # handler fires normally below.
+                    _is_tb_click = (
+                        ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                        and any(toolbar_button_rect(k).collidepoint(ev.pos)
+                                for k in TB_BTN_KEYS)
+                    )
+                    _is_z_press = (
+                        ev.type == pygame.KEYDOWN and ev.key == pygame.K_z
+                    )
+                    if _is_tb_click or _is_z_press:
+                        settings.close()
+                        # Gear button or Z key: toggle closed, nothing else to do
+                        if _is_z_press or toolbar_button_rect('settings').collidepoint(ev.pos):
+                            continue
+                        # Another toolbar button: fall through to its handler
+                    else:
+                        result = settings.handle_event(ev)
+                        if result == "save":
+                            settings.commit_into(cfg)
+                            # Re-validate after slider changes
+                            cfg.update(cfg_mod.validate(cfg))
+                            win_mod.set_opacity(sdl_win, cfg.get("opacity", 1.0))
+                            win_mod.set_always_on_top(sdl_win, bool(cfg.get("always_on_top", False)))
+                            startup_mod.set_startup(bool(cfg.get("open_on_startup", False)))
+                            cfg_mod.save(cfg)
+                        elif result == "reset":
+                            cfg.clear()
+                            cfg.update(cfg_mod.reset_defaults())
+                            win_mod.set_opacity(sdl_win, cfg.get("opacity", 1.0))
+                            win_mod.set_always_on_top(sdl_win, bool(cfg.get("always_on_top", False)))
+                        elif result == "full_reset":
+                            full_reset_dlg.open(*surface.get_size())
+                        elif result == "reset_tank":
+                            do_action("reset")
+                        elif result == "check_updates":
+                            update_check.recheck(APP_VERSION)
+                        elif result == "download_update":
+                            update_check.start_download()
+                        elif result == "install_update":
+                            if update_check.launch_installer():
+                                pygame.quit()
+                                return 0
+                            else:
+                                set_status("Could not launch installer — download may be corrupt.")
+                        continue
 
                 if fish_info.visible:
                     result = fish_info.handle_event(ev)
@@ -815,6 +842,27 @@ def main() -> int:
                         # Only count and unlock when the name was actually changed
                         cfg["stat_renamed"] = int(cfg.get("stat_renamed", 0)) + 1
                         _fire_achievement("name_changer")
+                        continue
+                    if result == "sell":
+                        sold_fish = fish_info.fish
+                        fish_info.close()
+                        if sold_fish is not None and sold_fish in fish_list:
+                            price_sell = fish_sell_price(sold_fish)
+                            scx = tr.left + int(getattr(sold_fish, "x", tr.w // 2))
+                            scy = tr.top  + int(getattr(sold_fish, "y", tr.h // 2))
+                            fish_roster.invalidate_thumb(sold_fish)
+                            fish_list.remove(sold_fish)
+                            _health_warned.discard(id(sold_fish))
+                            earn_coins(cfg, price_sell, float(scx), float(scy),
+                                       coin_popups, log_event,
+                                       f"Sold {sold_fish.name} for {price_sell} coins")
+                            log_event(cfg,
+                                      f"Sold {sold_fish.name}"
+                                      f" ({sold_fish.sp.get('name', '')}) for {price_sell} coins.",
+                                      "coin")
+                            set_status(f"Sold {sold_fish.name} for {price_sell} coins!")
+                            cfg_mod.save(cfg)
+                            cfg_mod.save_fish_state(fish_list)
                         continue
                     if result == "close_outside":
                         # Fish info was closed by an outside click; let this event pass through.
@@ -961,6 +1009,16 @@ def main() -> int:
                                 set_status(f"Not enough coins to restock! Need {restock_cost}.")
                         continue
 
+                # Settings toolbar button
+                if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                        and toolbar_button_rect('settings').collidepoint(ev.pos)):
+                    food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                    close_all_overlays(except_one="settings")
+                    settings.open(cfg, surface.get_size())
+                    if update_check.get_download_state()["status"] not in ("downloading", "ready"):
+                        update_check.recheck(APP_VERSION)
+                    continue
+
                 if fish_roster.visible:
                     result = fish_roster.handle_event(ev, fish_list)
                     roster_mode = fish_roster.visible
@@ -1006,10 +1064,37 @@ def main() -> int:
                         do_action("clean")
                     elif ev.key == pygame.K_r:
                         do_action("reset")
-                    elif ev.key == pygame.K_e:
+                    elif ev.key == pygame.K_z:
+                        food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                        close_all_overlays(except_one="settings")
                         settings.open(cfg, surface.get_size())
                         if update_check.get_download_state()["status"] not in ("downloading", "ready"):
                             update_check.recheck(APP_VERSION)
+                    elif ev.key == pygame.K_g:
+                        close_all_overlays(except_one="graveyard")
+                        graveyard_panel.toggle()
+                    elif ev.key == pygame.K_e:
+                        close_all_overlays(except_one="encyclopedia")
+                        encyclopedia.toggle()
+                    elif ev.key == pygame.K_x:
+                        close_all_overlays(except_one="event_log")
+                        event_log.toggle()
+                    elif ev.key == pygame.K_a:
+                        close_all_overlays(except_one="achievements")
+                        achievements.toggle()
+                    elif ev.key == pygame.K_l:
+                        food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                        close_all_overlays(except_one="roster")
+                        roster_mode = not roster_mode
+                        if roster_mode:
+                            fish_roster.open()
+                        else:
+                            fish_roster.close()
+                    elif ev.key == pygame.K_s:
+                        food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                        close_all_overlays(except_one="store")
+                        fish_store.toggle(cfg, surface.get_size())
+                        store_mode = fish_store.visible
                     elif ev.key == pygame.K_ESCAPE:
                         do_action("tray")
                     elif ev.key == pygame.K_q and (ev.mod & pygame.KMOD_CTRL):
@@ -1284,6 +1369,7 @@ def main() -> int:
                                   "death")
                         log_death(cfg, fd)
                         fish_roster.invalidate_thumb(fd)
+                        _health_warned.discard(id(fd))
                     cull_dead(fish_list)
                     juvenile = try_breed(fish_list, env.tank_w, env.tank_h, cfg, sim_dt)
                     if juvenile is not None:
@@ -1299,6 +1385,25 @@ def main() -> int:
                     prev_count = len(fish_list)
                     added = ensure_min_population(fish_list, env.tank_w, env.tank_h, cfg)
                     cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + added
+
+                    # ---- Algae danger warning (fires once when crossing 80%) ----
+                    if float(env.algae) >= 80.0:
+                        if not _algae_danger_warned:
+                            _algae_danger_warned = True
+                            set_status(
+                                f"Warning: algae at {int(env.algae)}%! Clean the tank soon!", 8.0)
+                    elif float(env.algae) < 70.0:
+                        _algae_danger_warned = False
+
+                    # ---- Critical health warning (once per fish per episode) ----
+                    for _f in fish_list:
+                        _fid = id(_f)
+                        if _f.health < 0.20 and _fid not in _health_warned:
+                            _health_warned.add(_fid)
+                            set_status(
+                                f"{_f.name} is critically ill! ({int(_f.health * 100)}% HP)", 6.0)
+                        elif _f.health >= 0.40 and _fid in _health_warned:
+                            _health_warned.discard(_fid)
 
             # -------- real-time day/night override --------
             if cfg.get("night_cycle", True):

@@ -8,11 +8,14 @@ Renderer converts to screen pixels after applying depth-layer scale.
 """
 from __future__ import annotations
 
+import logging
 import math
 import random
 from dataclasses import dataclass, field
 
 from .species import SPECIES, NAMES, RARE_NAMES, common_species, rare_species, super_rare_species, uncommon_species
+
+log = logging.getLogger(__name__)
 
 # Layer config: 1=front (largest, full y-range), 2=mid (behind castle), 3=back (smallest).
 LAYER_SCALE     = {1: 1.00, 2: 0.82, 3: 0.66}
@@ -920,6 +923,8 @@ def fish_from_dict(d: dict, tank_w: int, tank_h: int) -> "Fish | None":
     sp_name = d.get("species_name", "")
     sp = next((s for s in SPECIES if s.get("name") == sp_name), None)
     if sp is None:
+        log.warning("fish_from_dict: unknown species %r (fish %r) — skipping",
+                    sp_name, d.get("name", "<unnamed>"))
         return None
     f = make_fish(tank_w, tank_h,
                   species=sp,

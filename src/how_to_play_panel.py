@@ -390,8 +390,14 @@ def _page_controls(surf: pygame.Surface, r: pygame.Rect,
         ("Space", "Pause / resume the simulation"),
         ("F",     "Feed the fish (drop food)"),
         ("C",     "Clean algae from the glass"),
-        ("E",     "Open Settings"),
+        ("Z",     "Open Settings"),
         ("Esc",   "Minimise to system tray"),
+        ("L",     "Fish List"),
+        ("E",     "Encyclopaedia"),
+        ("X",     "Event Log"),
+        ("A",     "Achievements"),
+        ("G",     "Graveyard memorial"),
+        ("S",     "Fish Shoppe"),
     ]
     for label, desc in captions:
         cap = _draw_key_cap(surf, font, label, r.left + 16, key_y, w=40)
@@ -682,11 +688,17 @@ def _page_shortcuts(surf: pygame.Surface, r: pygame.Rect,
         ("F",      "Feed fish (toggle)"),
         ("C",      "Clean algae"),
         ("Space",  "Pause / resume"),
+        ("L",      "Fish List"),
+        ("E",      "Encyclopaedia"),
+        ("S",      "Fish Shoppe"),
     ]
     keys_r = [
-        ("E",      "Open Settings"),
+        ("Z",      "Settings"),
         ("Esc",    "Minimise to tray"),
         ("Ctrl+Q", "Quit"),
+        ("X",      "Event Log"),
+        ("A",      "Achievements"),
+        ("G",      "Graveyard"),
     ]
     for (lbl_l, desc_l), (lbl_r, desc_r) in zip(keys_l, keys_r):
         cap_l = _draw_key_cap(surf, font, lbl_l, r.left + 4, y)
