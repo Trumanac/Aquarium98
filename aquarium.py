@@ -30,7 +30,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.11"
+    APP_VERSION = "1.0.12"
 
 import pygame
 
@@ -51,7 +51,7 @@ from src.renderer import (
     toolbar_button_rect, TB_BTN_KEYS,
 )
 from src.settings_dialog import SettingsDialog
-from src.confirm_dialog import ConfirmDialog, FullResetDialog, AboutDialog, CrashDialog
+from src.confirm_dialog import ConfirmDialog, FullResetDialog, AboutDialog, CrashDialog, InfoDialog
 from src.how_to_play_panel import HowToPlayPanel
 from src.event_log_panel import EventLogPanel, log_event
 from src.achievements_panel import ACHIEVEMENTS, AchievementsPanel, check_achievements, unlock, is_unlocked
@@ -59,6 +59,7 @@ from src.encyclopedia_panel import EncyclopediaPanel, mark_seen, is_seen
 from src.graveyard_panel import GraveyardPanel, log_death
 from src.fish_info_panel import FishInfoPanel
 from src.fish_roster_panel import FishRosterPanel
+from src.stats_panel import StatsPanel
 from src import startup as startup_mod
 from src.splash import show_splash
 from src.simulation.environment import (
@@ -80,6 +81,7 @@ from src.fish_store_panel import FishStorePanel
 from src.cursor_manager import CursorManager
 from src.tooltip import Tooltip
 from src.sound_manager import SoundManager
+from src.music_player import MusicPlayer, MUSIC_END_EVENT
 from src.achievement_popup import AchievementPopup, UpdateBanner
 from src import update_check
 
@@ -267,6 +269,7 @@ def main() -> int:
         # Must be called after init_window so pygame/SDL2 is fully initialised.
         USE_ABS_CURSOR = win_mod.cursor_available()
         renderer = Renderer(surface, font)
+        renderer.toolbar_collapsed = bool(cfg.get("toolbar_collapsed", False))
         context = ContextMenu(font)
         settings = SettingsDialog(font)
         fish_info     = FishInfoPanel(font)
@@ -279,11 +282,34 @@ def main() -> int:
         achievements  = AchievementsPanel(font)
         encyclopedia  = EncyclopediaPanel(font)
         graveyard_panel = GraveyardPanel(font)
+        info_dlg = InfoDialog(font)
         fish_store    = FishStorePanel(font)
+        stats_panel   = StatsPanel(font)
         _pending_reset = False   # set True while waiting for confirm dialog
 
         # Sound effects (silent no-op if mixer unavailable)
         sound = SoundManager()
+
+        # Background music player
+        music = MusicPlayer(font)
+        music.set_volume(float(cfg.get("music_volume", 0.25)))
+        music.set_muted(bool(cfg.get("music_muted", False)))
+        music.player_visible = bool(cfg.get("music_player_visible", False))
+        music._loop = bool(cfg.get("music_loop_track", False))
+        if cfg.get("music_playing", True):
+            music.start()
+
+        # Wire live-preview callback so sliders update audio/opacity immediately
+        # without requiring Save.  The closure reads sdl_win by reference so it
+        # picks up any reassignment that happens during window resize events.
+        def _settings_live_change(key: str, val) -> None:
+            if key == "music_volume":
+                music.set_volume(float(val))
+            elif key == "sound_volume":
+                sound.set_volume(float(val))
+            elif key == "opacity":
+                win_mod.set_opacity(sdl_win, float(val))
+        settings.on_live_change = _settings_live_change
 
         # Achievement unlock notifications
         achievement_popup = AchievementPopup(font)
@@ -292,8 +318,12 @@ def main() -> int:
         update_banner    = UpdateBanner(font)
         _update_notified = False
 
-        def _fire_achievement(aid: str) -> None:
-            """Unlock an achievement, then show popup / play sound / award coins."""
+        def _fire_achievement(aid: str, snd_fn=None) -> None:
+            """Unlock an achievement, then show popup / play sound / award coins.
+
+            *snd_fn* (optional) overrides the default achievement sound — use it
+            for easter-egg achievements that have their own audio (Nemo, Beatles).
+            """
             if not unlock(cfg, aid):
                 return  # already unlocked — nothing to do
             _ach    = next((a for a in ACHIEVEMENTS if a["id"] == aid),
@@ -302,7 +332,7 @@ def main() -> int:
             _desc   = _ach["desc"]
             _reward = ACHIEVEMENT_COIN_REWARDS.get(aid, 0)
             log_event(cfg, f"[*] Achievement unlocked: {_name}", "info")
-            sound.play_achievement()
+            (snd_fn if snd_fn is not None else sound.play_achievement)()
             if _reward > 0:
                 earn_coins(cfg, _reward,
                            float(tr.centerx), float(tr.centery),
@@ -411,7 +441,59 @@ def main() -> int:
         clean_mode  = False
         roster_mode = False
         store_mode  = False
+        _feed_cycle_idx: int = 0   # cycles through fish by hunger when F is pressed
+        _is_fullscreen: bool = False
+        _pre_fs_size: tuple[int, int] | None = None
+        _pre_fs_pos:  tuple[int, int] | None = None
         stat_accum  = 0.0   # real-time seconds; flushed to cfg every minute
+
+        # ── Easter-egg state ────────────────────────────────────────────
+        # Konami code: track last N keypresses
+        _KONAMI_SEQ = [
+            pygame.K_UP, pygame.K_UP, pygame.K_DOWN, pygame.K_DOWN,
+            pygame.K_LEFT, pygame.K_RIGHT, pygame.K_LEFT, pygame.K_RIGHT,
+            pygame.K_b, pygame.K_a,
+        ]
+        _konami_buf: list[int] = []
+
+        # Title-bar click counting (5 clicks in 30 s → DVD mode)
+        _title_click_times: list[float] = []
+
+        # DVD bounce mode
+        _dvd_timer: float = 0.0
+        _dvd_pos:   list[float] = [100.0, 60.0]
+        _dvd_vel:   list[float] = [3.0, 2.0]
+        _dvd_logo:  pygame.Surface | None = None
+        _dvd_path = ROOT / "assets" / "sprites" / "ui" / "dvd_logo.png"
+        if _dvd_path.exists():
+            try:
+                _dvd_raw = pygame.image.load(str(_dvd_path)).convert_alpha()
+                _lw, _lh = _dvd_raw.get_size()
+                _dvd_scale = min(1.0, 140 / max(_lw, 1))
+                _dvd_logo = pygame.transform.smoothscale(
+                    _dvd_raw,
+                    (max(1, int(_lw * _dvd_scale)), max(1, int(_lh * _dvd_scale)))
+                )
+            except Exception:
+                pass
+
+        def _start_dvd_mode() -> None:
+            nonlocal _dvd_timer, _dvd_pos, _dvd_vel
+            _dvd_timer = 30.0
+            cw, ch = surface.get_size()
+            lw = _dvd_logo.get_width() if _dvd_logo else 64
+            lh = _dvd_logo.get_height() if _dvd_logo else 32
+            _dvd_pos = [
+                float(random.randint(0, max(0, cw - lw))),
+                float(random.randint(0, max(0, ch - lh))),
+            ]
+            angle = random.uniform(0.3, 0.9)
+            speed = random.uniform(2.5, 4.0)
+            sign_x = random.choice([-1, 1])
+            sign_y = random.choice([-1, 1])
+            _dvd_vel = [math.cos(angle) * speed * sign_x,
+                        math.sin(angle) * speed * sign_y]
+        # ────────────────────────────────────────────────────────────────
         # Warning state — prevents repeated notifications for the same condition
         _algae_danger_warned: bool = False
         _health_warned: set[int] = set()   # id(f) for fish already warned this episode
@@ -433,7 +515,7 @@ def main() -> int:
         _TIPS = [
             "Right-click anywhere for a quick action menu.",
             "Press Space to pause/unpause the simulation.",
-            "Press F to instantly drop food at the centre of the tank.",
+            "Press F to feed your hungriest fish — cycles through all fish by hunger.",
             "Press C to instantly scrub algae from the tank.",
             "Press Z to open the Settings dialog.",
             "Pop bubbles with a click — you might earn a coin!",
@@ -447,6 +529,8 @@ def main() -> int:
             "Press S to open the Fish Shoppe.",
             "Click a fish to view its full profile and rename it.",
             "Daily login streaks add to your progress. Come back tomorrow!",
+            "Press M to toggle the music player — ambient tunes await!",
+            "Try typing the Konami Code... \u2191\u2191\u2193\u2193\u2190\u2192\u2190\u2192BA",
         ]
         tip_countdown = 15.0  # seconds until first idle tip
         _tip_idx      = -1    # cycles through _TIPS sequentially
@@ -462,21 +546,28 @@ def main() -> int:
             (pygame.Rect(6, 228, 36, 36), "Encyclopaedia  [E]"),
             (pygame.Rect(6, 268, 36, 36), "Graveyard  [G]"),
             (pygame.Rect(6, 308, 36, 36), "Fish Shoppe  [S]"),
-            (pygame.Rect(6, 348, 36, 36), "Settings  [Z]"),
+            (pygame.Rect(6, 348, 36, 36), "Music Player  [M]"),
+            (pygame.Rect(6, 388, 36, 36), "Stats  [T]"),
+            (pygame.Rect(6, 428, 36, 36), "Settings  [Z]"),
         ]
         _size_tips: list[tuple[pygame.Rect, str]] = []
         _tooltip_size = (0, 0)
 
         def _rebuild_size_tips(w: int, h: int) -> None:
             nonlocal _size_tips, _tooltip_size
+            # Coins tip ends before the window chrome buttons (minimize starts at w-59)
+            _coins_x = w * 5 // 6
+            _coins_w = max(0, w - 65 - _coins_x)
             _size_tips = [
                 (pygame.Rect(w // 3, 3, w // 3, 14),
                  "Fish: living fish in tank"),
                 (pygame.Rect(w * 2 // 3, 3, w // 6, 14),
                  "Algae % — clean before it reaches 100%"),
-                (pygame.Rect(w * 5 // 6, 3, w // 6 - 2, 14),
+                (pygame.Rect(_coins_x, 3, _coins_w, 14),
                  "Coins — earned from fish care & achievements"),
-                (pygame.Rect(w - 20, h - 20, 20, 20), "Drag to resize"),
+                (win_mod.minimize_button_rect(w, h),   "Minimise to tray  [Esc]"),
+                (win_mod.fullscreen_button_rect(w, h), "Fullscreen / restore window"),
+                (pygame.Rect(w - 20, h - 20, 20, 20),  "Drag to resize"),
             ]
             _tooltip_size = (w, h)
 
@@ -497,6 +588,8 @@ def main() -> int:
             if except_one != "store":
                 fish_store.close()
                 store_mode = False
+            if except_one != "stats_panel":
+                stats_panel.close()
             if except_one != "settings":
                 settings.close()
             if except_one != "context":
@@ -527,6 +620,7 @@ def main() -> int:
                         cfg["window_x"], cfg["window_y"] = pos
                     _w, _h = surface.get_size()
                     cfg["window_w"], cfg["window_h"] = _w, _h
+                cfg["toolbar_collapsed"] = renderer.toolbar_collapsed
                 cfg_mod.save(cfg)
                 if cfg.get("persist_state", True):
                     cfg_mod.save_fish_state(fish_list)
@@ -730,6 +824,13 @@ def main() -> int:
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                     cursor_mgr.on_click()
 
+                # ── Background music: track-end and UI controls ──────────
+                if ev.type == MUSIC_END_EVENT:
+                    music.on_track_end()
+                    continue
+                if music.handle_event(ev):
+                    continue
+
                 # Confirm dialog eats all events while open
                 if confirm_dlg.visible:
                     result = confirm_dlg.handle_event(ev)
@@ -744,6 +845,11 @@ def main() -> int:
 
                 if how_to_play.visible:
                     how_to_play.handle_event(ev)
+                    continue
+
+                # InfoDialog eats all events while open
+                if info_dlg.visible:
+                    info_dlg.handle_event(ev)
                     continue
 
                 # Update banner — non-modal; only consumes its own [x] click
@@ -792,7 +898,8 @@ def main() -> int:
                     # button closes settings first, then falls through so its own
                     # handler fires normally below.
                     _is_tb_click = (
-                        ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                        not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
                         and any(toolbar_button_rect(k).collidepoint(ev.pos)
                                 for k in TB_BTN_KEYS)
                     )
@@ -808,6 +915,11 @@ def main() -> int:
                     else:
                         result = settings.handle_event(ev)
                         if result == "save":
+                            # Sync live music state into the dialog snapshot before
+                            # committing so the music widget can't revert volume/mute
+                            # to a stale value captured when the dialog was opened.
+                            settings.cfg_edit["music_volume"] = music._volume
+                            settings.cfg_edit["music_muted"]  = music._muted
                             settings.commit_into(cfg)
                             # Re-validate after slider changes
                             cfg.update(cfg_mod.validate(cfg))
@@ -815,6 +927,9 @@ def main() -> int:
                             win_mod.set_always_on_top(sdl_win, bool(cfg.get("always_on_top", False)))
                             startup_mod.set_startup(bool(cfg.get("open_on_startup", False)))
                             cfg_mod.save(cfg)
+                            # Sync music player with newly saved settings
+                            music.set_volume(float(cfg.get("music_volume", 0.25)))
+                            music.set_muted(bool(cfg.get("music_muted", False)))
                         elif result == "reset":
                             cfg.clear()
                             cfg.update(cfg_mod.reset_defaults())
@@ -842,6 +957,17 @@ def main() -> int:
                         # Only count and unlock when the name was actually changed
                         cfg["stat_renamed"] = int(cfg.get("stat_renamed", 0)) + 1
                         _fire_achievement("name_changer")
+                        # Easter egg: fish named "Nemo"
+                        _rfish = fish_info.fish
+                        if (_rfish is not None
+                                and getattr(_rfish, "custom_name", False)
+                                and _rfish.name.lower() == "nemo"):
+                            _fire_achievement("found_nemo", sound.play_nemo)
+                        # Easter egg: all four Beatles in the tank
+                        _BEATLES = {"john", "paul", "george", "ringo"}
+                        _living_names = {f.name.lower() for f in fish_list}
+                        if _BEATLES.issubset(_living_names):
+                            _fire_achievement("were_the_beatles", sound.play_beatles)
                         continue
                     if result == "sell":
                         sold_fish = fish_info.fish
@@ -877,7 +1003,8 @@ def main() -> int:
 
                 # Roster toolbar button always toggles — even when the roster panel
                 # is currently open.
-                if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                if (not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
                         and toolbar_button_rect('roster').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                     close_all_overlays(except_one="roster")
@@ -889,7 +1016,8 @@ def main() -> int:
                     continue
 
                 # Event log toolbar button
-                if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                if (not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
                         and toolbar_button_rect('event_log').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                     close_all_overlays(except_one="event_log")
@@ -902,7 +1030,8 @@ def main() -> int:
                         continue
 
                 # Achievements toolbar button
-                if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                if (not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
                         and toolbar_button_rect('achievements').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                     close_all_overlays(except_one="achievements")
@@ -914,7 +1043,8 @@ def main() -> int:
                         continue
 
                 # Encyclopedia toolbar button
-                if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                if (not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
                         and toolbar_button_rect('encyclopedia').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                     close_all_overlays(except_one="encyclopedia")
@@ -926,7 +1056,8 @@ def main() -> int:
                         continue
 
                 # Graveyard toolbar button
-                if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                if (not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
                         and toolbar_button_rect('graveyard').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                     close_all_overlays(except_one="graveyard")
@@ -934,11 +1065,19 @@ def main() -> int:
                     continue
 
                 if graveyard_panel.visible:
-                    if graveyard_panel.handle_event(ev):
-                        continue
+                        _gp_result = graveyard_panel.handle_event(ev, cfg)
+                        if _gp_result == "empty_graveyard_rclick":
+                            _fire_achievement("empty_graveyard")
+                            set_status("Nothing to see here... yet.", 6.0)
+                            info_dlg.open("Graveyard", "Nothing to see here... yet.",
+                                          *surface.get_size())
+                            continue
+                        if _gp_result:
+                            continue
 
                 # Fish Shoppe toolbar button
-                if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                if (not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
                         and toolbar_button_rect('store').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                     close_all_overlays(except_one="store")
@@ -1009,8 +1148,30 @@ def main() -> int:
                                 set_status(f"Not enough coins to restock! Need {restock_cost}.")
                         continue
 
+                # Music Player toolbar button
+                if (not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                        and toolbar_button_rect('music').collidepoint(ev.pos)):
+                    music.player_visible = not music.player_visible
+                    cfg["music_player_visible"] = music.player_visible
+                    continue
+
+                # Stats toolbar button
+                if (not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                        and toolbar_button_rect('stats').collidepoint(ev.pos)):
+                    food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                    close_all_overlays(except_one="stats_panel")
+                    stats_panel.toggle(anchor=tr)
+                    continue
+
+                if stats_panel.visible:
+                    if stats_panel.handle_event(ev):
+                        continue
+
                 # Settings toolbar button
-                if (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
+                if (not renderer.toolbar_collapsed
+                        and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1
                         and toolbar_button_rect('settings').collidepoint(ev.pos)):
                     food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                     close_all_overlays(except_one="settings")
@@ -1054,12 +1215,31 @@ def main() -> int:
                     else:
                         running = False
                 elif ev.type == pygame.KEYDOWN:
+                    # ── Easter egg: Konami code ──────────────────────────
+                    _konami_buf.append(ev.key)
+                    if len(_konami_buf) > len(_KONAMI_SEQ):
+                        _konami_buf.pop(0)
+                    if _konami_buf == _KONAMI_SEQ:
+                        _konami_buf.clear()
+                        _fire_achievement("konami_code")
+                        set_status("\u2191\u2191\u2193\u2193\u2190\u2192\u2190\u2192BA \u2014 The Code is real!", 6.0)
+                    # ─────────────────────────────────────────────────────
                     if ev.key == pygame.K_SPACE:
                         paused = not paused
                     elif ev.key == pygame.K_f:
-                        n = spawn_food_at(env, env.tank_w * 0.5, env.tank_h * 0.3,
-                                          max_active=int(cfg.get("max_food", 30)))
-                        set_status(f"Dropped {n} food flakes!")
+                        if fish_list:
+                            sorted_fish = sorted(fish_list, key=lambda f: -f.hunger)
+                            target = sorted_fish[_feed_cycle_idx % len(sorted_fish)]
+                            _feed_cycle_idx += 1
+                            food_x = target.x
+                            food_y = max(20.0, target.y - 40.0)
+                            n = spawn_food_at(env, food_x, food_y,
+                                              max_active=int(cfg.get("max_food", 30)))
+                            hunger_pct = int(target.hunger * 100)
+                            label = f"hungry ({hunger_pct}%)" if target.hunger > 0.15 else "full"
+                            set_status(f"Feeding {target.name} \u2014 {label}")
+                        else:
+                            set_status("No fish to feed!")
                     elif ev.key == pygame.K_c:
                         do_action("clean")
                     elif ev.key == pygame.K_r:
@@ -1095,14 +1275,36 @@ def main() -> int:
                         close_all_overlays(except_one="store")
                         fish_store.toggle(cfg, surface.get_size())
                         store_mode = fish_store.visible
+                    elif ev.key == pygame.K_m and not pygame.key.get_mods() & pygame.KMOD_CTRL:
+                        music.player_visible = not music.player_visible
+                        cfg["music_player_visible"] = music.player_visible
+                    elif ev.key == pygame.K_t:
+                        food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                        close_all_overlays(except_one="stats_panel")
+                        stats_panel.toggle(anchor=tr)
                     elif ev.key == pygame.K_ESCAPE:
                         do_action("tray")
+                    elif ev.key == pygame.K_TAB:
+                        _old_tr = renderer.compute_tank_rect()
+                        renderer.toolbar_collapsed = not renderer.toolbar_collapsed
+                        _new_tr = renderer.compute_tank_rect()
+                        renderer._static_bg = None
+                        _old_tw, _old_th = env.tank_w, env.tank_h
+                        rescale_environment(env, _old_tw, _old_th, _new_tr.w, _new_tr.h)
+                        for _rf in fish_list:
+                            _rf.x = max(0.0, min(float(_new_tr.w),
+                                                 _rf.x * _new_tr.w / max(1, _old_tw)))
+                            _rf.y = max(0.0, min(float(_new_tr.h),
+                                                 _rf.y * _new_tr.h / max(1, _old_th)))
+                        env.tank_w = _new_tr.w
+                        env.tank_h = _new_tr.h
+                        tr = _new_tr
                     elif ev.key == pygame.K_q and (ev.mod & pygame.KMOD_CTRL):
                         running = False
                 elif ev.type == pygame.MOUSEBUTTONDOWN:
                     if ev.button == 1:
                         mx, my = ev.pos
-                        if toolbar_button_rect('food').collidepoint(mx, my):
+                        if not renderer.toolbar_collapsed and toolbar_button_rect('food').collidepoint(mx, my):
                             food_mode = not food_mode
                             if food_mode:
                                 clean_mode = False
@@ -1111,7 +1313,7 @@ def main() -> int:
                             else:
                                 cursor_mgr.set_mode("normal")
                                 set_status("Food mode off.")
-                        elif toolbar_button_rect('clean').collidepoint(mx, my):
+                        elif not renderer.toolbar_collapsed and toolbar_button_rect('clean').collidepoint(mx, my):
                             clean_mode = not clean_mode
                             if clean_mode:
                                 food_mode = False
@@ -1182,12 +1384,66 @@ def main() -> int:
                                 log.debug("drag_mode=resize drag_orig=%s", drag_orig)
                             elif win_mod.in_close_button(mx, my, *_sz):
                                 do_action("tray")
+                            elif win_mod.in_minimize_button(mx, my, *_sz):
+                                pygame.display.iconify()
+                            elif win_mod.in_fullscreen_button(mx, my, *_sz):
+                                if not _is_fullscreen:
+                                    # Enter windowed fullscreen (borderless)
+                                    _pre_fs_size = surface.get_size()
+                                    _pre_fs_pos  = win_mod.get_position(sdl_win) or (0, 0)
+                                    _is_fullscreen = True
+                                    renderer._is_fullscreen = True
+                                    if sdl_win is not None:
+                                        try:
+                                            mx2, my2, mw, mh = win_mod.get_monitor_rect_for_window(sdl_win)
+                                            sdl_win.position = (mx2, my2)
+                                            sdl_win.size = (mw, mh)
+                                        except Exception as _e:
+                                            log.debug("windowed-fs enter: %s", _e)
+                                else:
+                                    # Exit windowed fullscreen: restore saved geometry
+                                    _is_fullscreen = False
+                                    renderer._is_fullscreen = False
+                                    pw, ph = _pre_fs_size if _pre_fs_size else (512, 320)
+                                    px, py = _pre_fs_pos  if _pre_fs_pos  else (100, 100)
+                                    if sdl_win is not None:
+                                        try:
+                                            sdl_win.size = (pw, ph)
+                                            sdl_win.position = (px, py)
+                                        except Exception as _e:
+                                            log.debug("windowed-fs exit: %s", _e)
+                            elif win_mod.in_toolbar_toggle_btn(mx, my, *_sz):
+                                _old_tr = renderer.compute_tank_rect()
+                                renderer.toolbar_collapsed = not renderer.toolbar_collapsed
+                                _new_tr = renderer.compute_tank_rect()
+                                renderer._static_bg = None
+                                _old_tw, _old_th = env.tank_w, env.tank_h
+                                rescale_environment(env, _old_tw, _old_th, _new_tr.w, _new_tr.h)
+                                for _rf in fish_list:
+                                    _rf.x = max(0.0, min(float(_new_tr.w),
+                                                         _rf.x * _new_tr.w / max(1, _old_tw)))
+                                    _rf.y = max(0.0, min(float(_new_tr.h),
+                                                         _rf.y * _new_tr.h / max(1, _old_th)))
+                                env.tank_w = _new_tr.w
+                                env.tank_h = _new_tr.h
+                                tr = _new_tr
                             elif not locked and win_mod.in_title_bar(mx, my, *_sz):
                                 drag_mode = "move"
                                 pygame.event.set_grab(True)
                                 drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
                                 drag_rel_accum = (0, 0)
                                 log.debug("drag_mode=move drag_win_start=%s", drag_win_start)
+                                # Easter egg: 5 title-bar clicks in 30 s → DVD mode
+                                _now_tc = time.perf_counter()
+                                _title_click_times.append(_now_tc)
+                                _title_click_times[:] = [
+                                    t for t in _title_click_times if _now_tc - t <= 30.0
+                                ]
+                                if len(_title_click_times) >= 5 and _dvd_logo is not None:
+                                    _title_click_times.clear()
+                                    _fire_achievement("dvd_mode")
+                                    set_status("DVD mode! Bouncing for 30 seconds...", 4.0)
+                                    _start_dvd_mode()
                     if ev.button == 3:
                         items = feed_menu()
                         # Reflect current toggle state
@@ -1276,11 +1532,12 @@ def main() -> int:
                             cur_w, cur_h = ev.x, ev.y
                     else:
                         cur_w, cur_h = ev.x, ev.y
-                    cur_w = max(win_mod.MIN_W, min(win_mod.MAX_W, cur_w))
-                    cur_h = max(win_mod.MIN_H, min(win_mod.MAX_H, cur_h))
+                    if not _is_fullscreen:
+                        cur_w = max(win_mod.MIN_W, min(win_mod.MAX_W, cur_w))
+                        cur_h = max(win_mod.MIN_H, min(win_mod.MAX_H, cur_h))
                     if surface.get_size() != (cur_w, cur_h):
                         _saved_pos = win_mod.get_position(sdl_win)
-                        surface = win_mod.resize_surface(cur_w, cur_h)
+                        surface = win_mod.resize_surface(cur_w, cur_h, clamp=not _is_fullscreen)
                         sdl_win = win_mod.get_sdl_window()
                         if drag_mode == "resize":
                             pygame.event.set_grab(True)
@@ -1370,6 +1627,13 @@ def main() -> int:
                         log_death(cfg, fd)
                         fish_roster.invalidate_thumb(fd)
                         _health_warned.discard(id(fd))
+                        # Close the fish-info panel when the fish it is
+                        # displaying has just died so the panel never shows
+                        # stale data for a culled fish.
+                        if fish_info.visible and fish_info.fish is fd:
+                            fish_info.close()
+                    if _dead:
+                        cfg["stat_deaths"] = int(cfg.get("stat_deaths", 0)) + len(_dead)
                     cull_dead(fish_list)
                     juvenile = try_breed(fish_list, env.tank_w, env.tank_h, cfg, sim_dt)
                     if juvenile is not None:
@@ -1405,6 +1669,11 @@ def main() -> int:
                         elif _f.health >= 0.40 and _fid in _health_warned:
                             _health_warned.discard(_fid)
 
+                # If the step cap was hit (window was hidden/minimized for a long
+                # time), discard the leftover debt to prevent fast-forward catch-up.
+                if steps >= 6:
+                    sim_accum = 0.0
+
             # -------- real-time day/night override --------
             if cfg.get("night_cycle", True):
                 _wall_time = datetime.datetime.now()
@@ -1435,6 +1704,18 @@ def main() -> int:
                 if int(cfg.get("difficulty", 2)) == 5 and len(fish_list) > 0:
                     cfg["stat_nightmare_days"] = float(cfg.get("stat_nightmare_days", 0.0)) + stat_accum / 86400.0
                 stat_accum = 0.0
+
+                # Sample fish/algae/coins history for the stats panel (last 60 data points)
+                _gh_fish  = list(cfg.get("stat_session_fish_hist")  or [])
+                _gh_algae = list(cfg.get("stat_session_algae_hist") or [])
+                _gh_coins = list(cfg.get("stat_session_coins_hist") or [])
+                _gh_fish.append(len(fish_list))
+                _gh_algae.append(int(env.algae))
+                _gh_coins.append(int(cfg.get("coins", 0)))
+                cfg["stat_session_fish_hist"]  = _gh_fish[-60:]
+                cfg["stat_session_algae_hist"] = _gh_algae[-60:]
+                cfg["stat_session_coins_hist"] = _gh_coins[-60:]
+
                 # Run full achievement checks once per minute
                 newly_unlocked = check_achievements(cfg, fish_list)
                 for aid in newly_unlocked:
@@ -1524,9 +1805,11 @@ def main() -> int:
                           stats=stats,
                           sprite_cache=sprite_cache,
                           status_msg=status_msg,
+                          now_playing=music.now_playing_text(),
                           chest=chest,
                           coin_popups=coin_popups,
                           encyclopedia_seen=_encyclopedia_seen)
+            music.draw(surface)
             context.draw(surface)
             settings.draw(surface)
             fish_roster.draw(surface, fish_list, tr, renderer.assets.fish_sheets)
@@ -1537,6 +1820,7 @@ def main() -> int:
             graveyard_panel.draw(surface, cfg, tr)
             fish_store.draw(surface, cfg, tr, renderer.assets.fish_sheets, fish_list,
                             btn_icons=renderer.assets.btn_icons_sm)
+            stats_panel.draw(surface, cfg)
             confirm_dlg.draw(surface)
             full_reset_dlg.draw(surface)
             about_dlg.draw(surface)
@@ -1561,6 +1845,36 @@ def main() -> int:
                 tooltip.register(_tr_r, _tr_t)
             tooltip.update(frame_dt, pygame.mouse.get_pos())
             tooltip.draw(surface, renderer.font)
+
+            # ── Music player widget ──────────────────────────────────────
+            renderer.stats_mode     = stats_panel.visible
+            renderer.settings_mode  = settings.visible
+            renderer.music_mode     = music.player_visible
+            cfg["music_player_visible"] = music.player_visible
+            cfg["music_playing"]   = music._playing
+            cfg["music_volume"]    = music._volume
+            cfg["music_muted"]     = music._muted
+            cfg["music_loop_track"] = music._loop
+
+            # ── Info dialog overlay ──────────────────────────────────────
+            info_dlg.draw(surface)
+
+            # ── DVD bounce overlay ───────────────────────────────────────
+            if _dvd_timer > 0 and _dvd_logo is not None:
+                _dvd_timer -= frame_dt
+                lw4, lh4 = _dvd_logo.get_size()
+                _dvd_pos[0] += _dvd_vel[0]
+                _dvd_pos[1] += _dvd_vel[1]
+                cw4, ch4 = surface.get_size()
+                if _dvd_pos[0] <= 0:
+                    _dvd_vel[0] = abs(_dvd_vel[0]);  _dvd_pos[0] = 0.0
+                elif _dvd_pos[0] + lw4 >= cw4:
+                    _dvd_vel[0] = -abs(_dvd_vel[0]); _dvd_pos[0] = float(cw4 - lw4)
+                if _dvd_pos[1] <= 0:
+                    _dvd_vel[1] = abs(_dvd_vel[1]);  _dvd_pos[1] = 0.0
+                elif _dvd_pos[1] + lh4 >= ch4:
+                    _dvd_vel[1] = -abs(_dvd_vel[1]); _dvd_pos[1] = float(ch4 - lh4)
+                surface.blit(_dvd_logo, (int(_dvd_pos[0]), int(_dvd_pos[1])))
 
             cursor_mgr.draw(surface)
             pygame.display.flip()

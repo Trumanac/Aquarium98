@@ -15,6 +15,7 @@ Navigation: ◀ Back / Next ▶ buttons + numbered page dots. Esc / X closes.
 from __future__ import annotations
 
 from pathlib import Path
+import math
 import pathlib
 import sys
 from typing import Callable
@@ -23,6 +24,22 @@ import pygame
 
 # -- Font cache (SysFont is expensive; only create each variant once) -----------
 _font_cache: dict = {}
+
+
+def _draw_mood_dot(surf: pygame.Surface, cx: int, cy: int, r: int,
+                  mood: str, col: tuple) -> None:
+    """Draw a mood indicator circle; 'happy' gets a pixel smiley face."""
+    pygame.draw.circle(surf, col, (cx, cy), r)
+    pygame.draw.circle(surf, (0, 0, 0), (cx, cy), r, 1)
+    if mood == "happy":
+        e  = max(1, r // 3)
+        pygame.draw.circle(surf, (0, 0, 0), (cx - e, cy - e), 1)
+        pygame.draw.circle(surf, (0, 0, 0), (cx + e, cy - e), 1)
+        sm = max(2, r // 2)
+        pygame.draw.line(surf, (0, 0, 0),
+                         (cx - sm, cy + sm // 2), (cx, cy + sm), 1)
+        pygame.draw.line(surf, (0, 0, 0),
+                         (cx, cy + sm), (cx + sm, cy + sm // 2), 1)
 
 
 def _get_bold_font(size: int) -> pygame.font.Font:
@@ -307,7 +324,8 @@ def _btn_icon(btn_idx: int, size: tuple) -> "pygame.Surface | None":
     """Extract a toolbar button icon from Buttons.png by index, scaled to size."""
     _DEFS = [
         (59,  284), (350, 276), (633, 269), (909, 251), (1166, 251),
-        (1422, 250), (1675, 252), (1930, 251), (2203, 138), (2345, 153), (2504, 98),
+        (1422, 250), (1675, 252), (1930, 251), (2203, 138), (2345, 153),
+        (2504, 98),  (2611, 251), (2871, 251), (3132, 251),
     ]
     key = f"btn_icon:{btn_idx}@{size}"
     if key not in _sprite_cache:
@@ -369,41 +387,60 @@ def _page_controls(surf: pygame.Surface, r: pygame.Rect,
     surf.blit(big.render("Controls at a glance", True, ACCENT),
               (r.left + 4, r.top + 2))
 
-    # Mouse illustration column
+    # Mouse illustration row — both mice side by side, compact
     mouse_x = r.left + 16
-    mouse_y = r.top + 28
+    mouse_y = r.top + 24
     _draw_mouse(surf, mouse_x, mouse_y, left_active=True)
     surf.blit(font.render("Left-click", True, (0, 0, 0)),
               (mouse_x + 36, mouse_y + 2))
-    surf.blit(font.render("Feed / clean / pop bubbles",  True, WIN_DARK),
+    surf.blit(font.render("Feed / clean / pop bubbles", True, WIN_DARK),
               (mouse_x + 36, mouse_y + 2 + font.get_height() + 1))
 
-    _draw_mouse(surf, mouse_x, mouse_y + 60, right_active=True)
+    mx2 = r.left + r.w // 2
+    _draw_mouse(surf, mx2, mouse_y, right_active=True)
     surf.blit(font.render("Right-click", True, (0, 0, 0)),
-              (mouse_x + 36, mouse_y + 62))
-    surf.blit(font.render("Open the action menu anywhere",  True, WIN_DARK),
-              (mouse_x + 36, mouse_y + 62 + font.get_height() + 1))
+              (mx2 + 36, mouse_y + 2))
+    surf.blit(font.render("Open the action menu anywhere", True, WIN_DARK),
+              (mx2 + 36, mouse_y + 2 + font.get_height() + 1))
 
-    # Keyboard caps column
-    key_y = mouse_y + 130
-    captions = [
-        ("Space", "Pause / resume the simulation"),
-        ("F",     "Feed the fish (drop food)"),
-        ("C",     "Clean algae from the glass"),
-        ("Z",     "Open Settings"),
-        ("Esc",   "Minimise to system tray"),
+    # Keyboard caps — 2-column grid
+    key_y = mouse_y + 48
+    col_l = r.left + 4
+    col_r = r.left + r.w // 2 + 4
+    cap_w = 40
+
+    captions_l = [
+        ("Space", "Pause / resume"),
+        ("F",     "Feed fish"),
+        ("C",     "Clean algae"),
+        ("Z",     "Settings"),
+        ("Esc",   "Minimise to tray"),
         ("L",     "Fish List"),
         ("E",     "Encyclopaedia"),
-        ("X",     "Event Log"),
-        ("A",     "Achievements"),
-        ("G",     "Graveyard memorial"),
-        ("S",     "Fish Shoppe"),
     ]
-    for label, desc in captions:
-        cap = _draw_key_cap(surf, font, label, r.left + 16, key_y, w=40)
-        surf.blit(font.render(desc, True, (0, 0, 0)),
-                  (cap.right + 10, key_y + 4))
-        key_y += cap.h + 4
+    captions_r = [
+        ("X",   "Event Log"),
+        ("A",   "Achievements"),
+        ("G",   "Graveyard"),
+        ("S",   "Fish Shoppe"),
+        ("M",   "Music player"),
+        ("T",   "Stats panel"),
+        ("Tab", "Toggle sidebar"),
+    ]
+    row = 0
+    for i in range(max(len(captions_l), len(captions_r))):
+        cy_row = key_y + row * 26
+        if i < len(captions_l):
+            label, desc = captions_l[i]
+            cap = _draw_key_cap(surf, font, label, col_l, cy_row, w=cap_w)
+            surf.blit(font.render(desc, True, (0, 0, 0)),
+                      (cap.right + 6, cy_row + 4))
+        if i < len(captions_r):
+            label, desc = captions_r[i]
+            cap = _draw_key_cap(surf, font, label, col_r, cy_row, w=cap_w)
+            surf.blit(font.render(desc, True, (0, 0, 0)),
+                      (cap.right + 6, cy_row + 4))
+        row += 1
 
 
 def _page_feed_clean(surf: pygame.Surface, r: pygame.Rect,
@@ -468,14 +505,15 @@ def _page_mood_rarity(surf: pygame.Surface, r: pygame.Rect,
               (r.left + 4, y))
     y += lh + 1
     _MOODS = [
-        ((30,  200, 60),  "Happy   ", "well-fed, clean water, low stress"),
-        ((220, 200, 40),  "Content ", "normal healthy state"),
-        ((220, 60,  60),  "Stressed", "overcrowded or dirty water"),
-        ((220, 160, 20),  "Hungry  ", "needs food — health will drop if ignored"),
+        ("happy",    (30,  200, 60),  "Happy   ", "well-fed, clean water, low stress"),
+        ("content",  (80,  200, 80),  "Content ", "normal healthy state"),
+        ("stressed", (220, 60,  60),  "Stressed", "overcrowded or dirty water"),
+        ("hungry",   (220, 160, 20),  "Hungry  ", "needs food — health will drop if ignored"),
     ]
-    for _col, _lbl, _desc in _MOODS:
-        pygame.draw.circle(surf, _col,   (r.left + 10, y + font.get_height() // 2), 6)
-        pygame.draw.circle(surf, WIN_DARK,(r.left + 10, y + font.get_height() // 2), 6, 1)
+    for _mood, _col, _lbl, _desc in _MOODS:
+        _cx = r.left + 10
+        _cy = y + font.get_height() // 2
+        _draw_mood_dot(surf, _cx, _cy, 6, _mood, _col)
         surf.blit(font.render(f"{_lbl} — {_desc}", True, (0, 0, 0)),
                   (r.left + 22, y))
         y += lh
@@ -567,9 +605,11 @@ def _page_panels(surf: pygame.Surface, r: pygame.Rect,
         ("Encyclopaedia","All species you''ve seen, with fun facts.",         (140, 200, 140)),
         ("Graveyard",    "A memorial for every fish that has passed.",        (180, 150, 200)),
         ("Fish Shoppe",  "Buy new species, sell ones you don''t want.",       (240, 140, 140)),
+        ("Music Player", "8 built-in ambient tracks — press M to open.",     (160, 200, 240)),
+        ("Stats Panel",  "Live charts: fish count, algae %, coins. (T)",     (200, 240, 160)),
     ]
-    # Button icon indices: 2=roster,3=event_log,4=achievements,5=encyclopedia,6=graveyard,7=store
-    _icon_idxs = [2, 3, 4, 5, 6, 7]
+    # Button icon indices: 2=roster,3=event_log,4=achievements,5=encyclopedia,6=graveyard,7=store,12=music,13=stats
+    _icon_idxs = [2, 3, 4, 5, 6, 7, 12, 13]
     y = r.top + 28
     for (name, desc, _), btn_idx in zip(items, _icon_idxs):
         tile = pygame.Rect(r.left + 4, y, 30, 26)
@@ -613,6 +653,8 @@ def _page_window(surf: pygame.Surface, r: pygame.Rect,
     lines = _wrap(font,
         "Drag the title bar to move the tank anywhere on your desktop. Drag "
         "the bottom-right corner to resize it.\n\n"
+        "Press Tab (or click the ◀ button at the left of the title bar) to "
+        "show or hide the toolbar for a cleaner view.\n\n"
         "From the right-click menu you can pin it Always on Top, Lock it in "
         "place so you don''t bump it, adjust Opacity for a ghostly look, or "
         "Minimise to Tray to keep it running quietly in the background.",
@@ -651,6 +693,8 @@ def _page_tips(surf: pygame.Surface, r: pygame.Rect,
         "Toggle fish names and mood dots: right-click → Show Names / Moods.",
         "Rare & Epic fish can't breed true — spot them or buy from the Shoppe.",
         "Change castle and plant style anytime via right-click → Settings.",
+        "Press M to open the music player — 8 ambient tracks keep your tank alive.",
+        "Press T to view the Stats panel — live charts for fish, algae, and coins.",
     ]
     y = iy + 52
     for t in tips:
@@ -667,73 +711,64 @@ def _page_tips(surf: pygame.Surface, r: pygame.Rect,
                      r.bottom - hint.get_height() - 2))
 
 
-def _page_shortcuts(surf: pygame.Surface, r: pygame.Rect,
-                    font: pygame.font.Font) -> None:
-    """Quick Reference — keyboard shortcuts and mouse controls cheat sheet."""
+def _page_music(surf: pygame.Surface, r: pygame.Rect,
+                font: pygame.font.Font) -> None:
+    """Music player widget and easter egg hints."""
     big = _get_bold_font(14)
-    surf.blit(big.render("Quick Reference", True, ACCENT),
+    surf.blit(big.render("Music & Hidden Secrets", True, ACCENT),
               (r.left + 4, r.top + 2))
 
-    y    = r.top + 22
-    half = r.w // 2
-    col2 = r.left + 80   # description column (left-half mouse rows)
-    fh   = font.get_height()
-
-    # ----- Keyboard shortcuts (2-column grid, 3 keys per column) -----
+    body_y = r.top + 22
     sub = _get_bold_font(11)
-    surf.blit(sub.render("Keyboard", True, WIN_DARK), (r.left + 4, y))
-    y += sub.get_height() + 2
 
-    keys_l = [
-        ("F",      "Feed fish (toggle)"),
-        ("C",      "Clean algae"),
-        ("Space",  "Pause / resume"),
-        ("L",      "Fish List"),
-        ("E",      "Encyclopaedia"),
-        ("S",      "Fish Shoppe"),
-    ]
-    keys_r = [
-        ("Z",      "Settings"),
-        ("Esc",    "Minimise to tray"),
-        ("Ctrl+Q", "Quit"),
-        ("X",      "Event Log"),
-        ("A",      "Achievements"),
-        ("G",      "Graveyard"),
-    ]
-    for (lbl_l, desc_l), (lbl_r, desc_r) in zip(keys_l, keys_r):
-        cap_l = _draw_key_cap(surf, font, lbl_l, r.left + 4, y)
-        surf.blit(font.render(desc_l, True, (0, 0, 0)),
-                  (r.left + 4 + cap_l.w + 6, y + 4))
-        cap_r = _draw_key_cap(surf, font, lbl_r, r.left + half + 4, y)
-        desc_s = font.render(desc_r, True, (0, 0, 0))
-        dx = r.left + half + 4 + cap_r.w + 6
-        avail = r.right - dx - 2
-        surf.blit(desc_s, (dx, y + 4),
-                  area=(0, 0, min(desc_s.get_width(), avail), fh))
-        y += cap_l.h + 2
-    y += 4
+    # ── Music player section ──────────────────────────────────────────
+    surf.blit(sub.render("Background Music Player", True, WIN_DARK),
+              (r.left + 4, body_y))
+    body_y += sub.get_height() + 3
 
-    # ----- Mouse controls -----
-    surf.blit(sub.render("Mouse", True, WIN_DARK), (r.left + 4, y))
-    y += sub.get_height() + 2
+    lines = _wrap(font,
+        "Press M (or click \u266a in the status bar) to show or hide the music "
+        "player. It comes with 8 built-in ambient tracks \u2014 no internet required.",
+        r.w - _PAD)
+    for ln in lines:
+        surf.blit(font.render(ln, True, (0, 0, 0)), (r.left + 4, body_y))
+        body_y += font.get_height() + 2
+    body_y += 4
 
-    mouse_rows = [
-        (True,  False, "Click inside tank",  "Drop food / clean / pop bubbles"),
-        (False, True,  "Right-click",        "Open context menu (anywhere)"),
-        (False, False, "Drag title bar",     "Move the window"),
-        (False, False, "Drag corner",        "Resize the window"),
-        (False, False, "Click fish",         "Open fish profile panel"),
+    music_controls = [
+        ("\u25c4\u25c4 / \u25ba\u25ba", "Previous / next track"),
+        ("\u25ba / \u2016",             "Play or pause playback"),
+        ("\u21ba",                       "Loop the current track"),
+        ("\U0001f507 / vol",             "Mute toggle and volume bar"),
     ]
-    for left, right, label, desc in mouse_rows:
-        if left or right:
-            mr = _draw_mouse(surf, r.left + 8, y, left_active=left, right_active=right)
-            surf.blit(font.render(label, True, (0, 0, 0)), (col2, y + 2))
-            surf.blit(font.render(desc, True, WIN_DARK), (col2, y + 2 + fh + 1))
-            y += mr.h + 3
-        else:
-            lmb = _draw_key_cap(surf, font, "LMB", r.left + 6, y + 2, h=16)
-            surf.blit(font.render(f"{label}  \u2014  {desc}", True, (0, 0, 0)), (col2, y + 3))
-            y += max(lmb.h, fh) + 5
+    for sym, desc in music_controls:
+        pygame.draw.circle(surf, ACCENT,
+                           (r.left + 8, body_y + font.get_height() // 2), 2)
+        surf.blit(font.render(f"{sym}  \u2014  {desc}", True, (0, 0, 0)),
+                  (r.left + 16, body_y))
+        body_y += font.get_height() + 3
+    body_y += 8
+
+    # ── Easter egg hints ────────────────────────────────────────────
+    surf.blit(sub.render("Easter Eggs  (can you find them all?)", True, WIN_DARK),
+              (r.left + 4, body_y))
+    body_y += sub.get_height() + 3
+
+    hints = [
+        "A famous clownfish shares its name with a Pixar hero\u2026",
+        "Four fish named after a legendary rock band play a special song.",
+        "Up, Up, Down, Down\u2026 every gamer knows the rest.",
+        "What happens when you right-click an empty Graveyard?",
+        "Click the title bar rapidly five times and see what plays.",
+    ]
+    for h in hints:
+        pygame.draw.circle(surf, HEART_RED,
+                           (r.left + 8, body_y + font.get_height() // 2), 2)
+        lines = _wrap(font, h, r.w - 20)
+        for ln in lines:
+            surf.blit(font.render(ln, True, (0, 0, 0)), (r.left + 16, body_y))
+            body_y += font.get_height() + 1
+        body_y += 4
 
 
 _PAGES: list[tuple[str, Callable[[pygame.Surface, pygame.Rect, pygame.font.Font], None]]] = [
@@ -745,7 +780,6 @@ _PAGES: list[tuple[str, Callable[[pygame.Surface, pygame.Rect, pygame.font.Font]
     ("Toolbar Panels", _page_panels),
     ("Window & Tray",  _page_window),
     ("Tips",           _page_tips),
-    ("Quick Reference", _page_shortcuts),
 ]
 
 
@@ -927,7 +961,7 @@ class HowToPlayPanel:
 
         # Close button — red, Windows-style
         cb = self._close_btn
-        close_col = (170, 30, 30) if self._close_press else (200, 40, 40)
+        close_col = (140, 50, 50) if self._close_press else (180, 80, 80)
         pygame.draw.rect(surface, close_col, cb)
         _bevel(surface, cb, pressed=self._close_press)
         x_lbl = fnt.render("X", True, WIN_LIGHT)

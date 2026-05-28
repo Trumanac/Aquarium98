@@ -50,7 +50,7 @@ CURRENT_VERSION = "1.0"
 SLOT_CAPS = {
     "max_fish":    30,
     "max_bubbles": 30,
-    "max_food":    40,
+    "max_food":    60,
 }
 
 # ---------------------------------------------------------------------------
@@ -61,35 +61,52 @@ DIFFICULTY_PRESETS: dict[int, dict[str, Any]] = {
         "min_fish": 3, "max_fish": 30, "start_fish": 8,
         "hunger_rate": 0.20, "breed_rate": 1.20, "algae_rate": 0.15,
         "growth_rate": 0.80, "age_rate": 0.60, "bubble_rate": 1.0,
-        "max_food": 28,
+        "max_food": 50,
     },
     2: {  # Normal
         "min_fish": 2, "max_fish": 25, "start_fish": 6,
         "hunger_rate": 0.50, "breed_rate": 0.70, "algae_rate": 0.30,
         "growth_rate": 0.50, "age_rate": 1.00, "bubble_rate": 1.0,
-        "max_food": 24,
+        "max_food": 40,
     },
     3: {  # Hard
         "min_fish": 1, "max_fish": 20, "start_fish": 5,
         "hunger_rate": 1.00, "breed_rate": 0.45, "algae_rate": 0.50,
         "growth_rate": 0.40, "age_rate": 1.30, "bubble_rate": 1.0,
-        "max_food": 20,
+        "max_food": 32,
     },
     4: {  # Brutal
         "min_fish": 0, "max_fish": 15, "start_fish": 4,
         "hunger_rate": 1.60, "breed_rate": 0.30, "algae_rate": 0.80,
         "growth_rate": 0.30, "age_rate": 1.60, "bubble_rate": 1.0,
-        "max_food": 18,
+        "max_food": 26,
     },
     5: {  # Nightmare
         "min_fish": 0, "max_fish": 10, "start_fish": 3,
         "hunger_rate": 2.20, "breed_rate": 0.18, "algae_rate": 1.20,
         "growth_rate": 0.25, "age_rate": 2.00, "bubble_rate": 1.0,
-        "max_food": 16,
+        "max_food": 20,
     },
 }
 
 DIFFICULTY_NAMES = {1: "Peaceful", 2: "Normal", 3: "Hard", 4: "Brutal", 5: "Nightmare"}
+
+
+def _safe_int(value, default: int) -> int:
+    """Coerce *value* to int, falling back to *default* on failure."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_float(value, default: float) -> float:
+    """Coerce *value* to float, falling back to *default* on failure."""
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
 
 DIFFICULTY_DESCS = {
     1: "Easy — Fish breed freely and a safe minimum pop. is always maintained.",
@@ -126,7 +143,7 @@ def _validate(cfg: dict[str, Any]) -> dict[str, Any]:
     cfg["night_cycle"]    = True
     cfg["persist_state"]  = True
 
-    cfg["difficulty"] = max(1, min(5, int(cfg.get("difficulty", 2))))
+    cfg["difficulty"] = max(1, min(5, _safe_int(cfg.get("difficulty", 2), 2)))
 
     # Apply difficulty preset for all gameplay-rate variables.
     # max_fish is intentionally NOT overwritten here — it is user-configurable
@@ -147,34 +164,33 @@ def _validate(cfg: dict[str, Any]) -> dict[str, Any]:
     # difficulty preset default when no user value is present.
     cfg["max_fish"] = max(
         preset["min_fish"],
-        min(SLOT_CAPS["max_fish"], int(cfg.get("max_fish", preset["max_fish"])))
+        min(SLOT_CAPS["max_fish"], _safe_int(cfg.get("max_fish", preset["max_fish"]), preset["max_fish"]))
     )
 
     # Performance mode: cap fish and food to reduce rendering load
     if cfg.get("performance_mode", False):
         cfg["max_fish"] = min(cfg["max_fish"], 8)
-        cfg["max_food"] = min(cfg["max_food"], 14)
+        cfg["max_food"] = min(cfg["max_food"], 20)
 
     # Clamp max_bubbles
-    cfg["max_bubbles"] = max(1, min(SLOT_CAPS["max_bubbles"], int(cfg.get("max_bubbles", 30))))
+    cfg["max_bubbles"] = max(1, min(SLOT_CAPS["max_bubbles"], _safe_int(cfg.get("max_bubbles", 30), 30)))
 
-    cfg["start_fish"] = max(0, min(cfg["max_fish"], int(cfg.get("start_fish", 6))))
+    cfg["start_fish"] = max(0, min(cfg["max_fish"], _safe_int(cfg.get("start_fish", 6), 6)))
 
-    op = float(cfg.get("opacity", 1.0))
-    cfg["opacity"] = max(0.3, min(1.0, op))
+    cfg["opacity"] = max(0.3, min(1.0, _safe_float(cfg.get("opacity", 1.0), 1.0)))
 
-    cfg["window_w"] = max(384, min(1200, int(cfg.get("window_w", 512))))
-    cfg["window_h"] = max(406, min(800, int(cfg.get("window_h", 406))))
+    cfg["window_w"] = max(384, min(1200, _safe_int(cfg.get("window_w", 512), 512)))
+    cfg["window_h"] = max(406, min(800,  _safe_int(cfg.get("window_h", 406), 406)))
 
-    cfg["bubble_rate"] = max(0.0, min(4.0, float(cfg.get("bubble_rate", 1.0))))
+    cfg["bubble_rate"] = max(0.0, min(4.0, _safe_float(cfg.get("bubble_rate", 1.0), 1.0)))
 
-    cfg["castle_choice"] = max(1, min(5, int(cfg.get("castle_choice", 1))))
-    cfg["bg_choice"]     = max(1, min(4, int(cfg.get("bg_choice", 1))))
-    cfg["plant_choice"]  = max(1, min(3, int(cfg.get("plant_choice", 1))))
+    cfg["castle_choice"] = max(1, min(5, _safe_int(cfg.get("castle_choice", 1), 1)))
+    cfg["bg_choice"]     = max(1, min(4, _safe_int(cfg.get("bg_choice",     1), 1)))
+    cfg["plant_choice"]  = max(1, min(3, _safe_int(cfg.get("plant_choice",  1), 1)))
 
-    cfg["sound_volume"] = max(0.0, min(1.0, float(cfg.get("sound_volume", 0.7))))
+    cfg["sound_volume"] = max(0.0, min(1.0, _safe_float(cfg.get("sound_volume", 0.7), 0.7)))
 
-    cfg["coins"] = max(0, int(cfg.get("coins", 0)))
+    cfg["coins"] = max(0, _safe_int(cfg.get("coins", 0), 0))
 
     return cfg
 

@@ -56,7 +56,7 @@ def _make_sound_manager():
 
 
 def test_sound_manager_loads_all_sounds():
-    """SoundManager._ok should be True and all nine sounds should load."""
+    """SoundManager._ok should be True and all eleven sounds should load."""
     snd = _make_sound_manager()
 
     assert snd._ok, (
@@ -66,16 +66,18 @@ def test_sound_manager_loads_all_sounds():
     assert snd._coin_chest  is not None, "CoinChest.mp3 failed to load"
     assert snd._single_coin is not None, "SingleCoin.mp3 failed to load"
     assert snd._achievement is not None, "Achievement.wav failed to load"
+    assert snd._chest_creak is not None, "ChestCreak.wav failed to load"
     assert len(snd._bubble_pops) == 3, (
         f"Expected 3 bubble-pop sounds, got {len(snd._bubble_pops)}"
     )
     assert len(snd._splashes) == 3, (
         f"Expected 3 splash sounds, got {len(snd._splashes)}"
     )
-    assert len(snd._all_sounds) == 10, (
-        f"Expected 10 total sounds in _all_sounds, got {len(snd._all_sounds)}"
+    # 4 core + 1 easter-egg (Beatles.wav) + 3 bubble pops + 3 splashes = 11
+    assert len(snd._all_sounds) == 11, (
+        f"Expected 11 total sounds in _all_sounds, got {len(snd._all_sounds)}"
     )
-    print("       OK — all 10 audio files loaded")
+    print("       OK — all 11 audio files loaded")
 
     import pygame  # type: ignore[import]
     pygame.mixer.quit()

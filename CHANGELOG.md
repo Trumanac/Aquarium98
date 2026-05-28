@@ -9,6 +9,68 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.12] — 2026-05-28
+
+### Fixed
+- **Music state not restored on startup** — playback was always auto-starting
+  even when the player had paused it before closing. A `music_playing` flag is
+  now persisted to config and checked at startup so playback resumes only if it
+  was active when the app last closed.
+- **Music volume/mute lost when applying settings** — the Settings dialog was
+  committing a stale snapshot of volume and muted state taken at open time,
+  silently overwriting any changes made via the music player widget in the same
+  session. Live values are now synced into the settings edit buffer immediately
+  before `commit_into()` is called.
+- **`_load_and_play()` infinite recursion on bad track list** — tail-recursive
+  retry loop could overflow the call stack if every track in the playlist failed
+  to load. Replaced with a bounded `for` loop capped at `len(order)`.
+- **Shrimp/crawlers getting stuck in tank corners** — bottom-dwelling crawlers
+  weren't having their `facing` direction corrected at wall bounce points,
+  allowing them to endlessly try to walk into the wall. Facing is now flipped at
+  each horizontal wall bounce.
+- **Event log scroll direction inverted** — mouse wheel scrolled the log
+  backwards (wheel-up moved content down). Fixed by flipping the scroll delta
+  sign.
+- **`fish_info` panel staying open when the displayed fish dies** — the Fish
+  Profile popup remained on screen showing stale data after the featured fish
+  was removed from the tank. The death loop now closes the panel when it detects
+  the dying fish is the one currently shown.
+- **`toolbar_collapsed` state not persisted** — collapsing the toolbar via Tab
+  was a session-only change; restarting the app always reset it to expanded.
+  The flag is now saved to config in `_persist_state_now()` and restored from
+  config at startup.
+- **Music/Settings toolbar buttons not highlighting** — `renderer.settings_mode`
+  and `renderer.music_mode` were never set, so the toolbar buttons for those
+  panels never entered their active/highlighted state. Both flags are now synced
+  from the panel visibility state each frame.
+- **Sim time-warp after window minimise** — a long minimise would accumulate a
+  large `sim_accum` value, causing a burst of simulation steps and a visual jump
+  when the window was restored. Accumulator is now clamped to zero when more
+  than 6 steps would be required in a single frame.
+- **`config._validate()` crash on corrupted/wrong-type config values** — bare
+  `int()` / `float()` casts would raise `ValueError`/`TypeError` if the JSON
+  contained a string or `null` for a numeric field (e.g. after manual editing).
+  Replaced all casts with `_safe_int()` / `_safe_float()` helpers that fall back
+  to the default value gracefully.
+- **Treasure chest frame cache unbounded growth** — the per-chest surface cache
+  had no size limit; long sessions could accumulate hundreds of scaled frames.
+  Cache is now cleared when it exceeds 32 entries.
+- **`spend_coins()` could produce a negative coin balance** — no floor clamp
+  existed on the subtraction path. Balance is now clamped to `max(0, ...)`.
+- **Fish name and toolbar hotkey surfaces re-rendered every frame** — `font.render()`
+  was called unconditionally each frame for every visible fish name and every
+  toolbar hotkey label. Both are now cached (`_name_surf_cache` / `_tb_hotkey_cache`)
+  and only re-rendered when the content changes.
+- **Food slot cap too low on relaxed difficulty settings** — `SLOT_CAPS["max_food"]`
+  and per-difficulty food presets were set too conservatively, causing food to
+  vanish before fish could reach it on larger tanks. Limits raised across all
+  difficulty tiers.
+- **Smoke test `_all_sounds` count stale** — the `test_sound_manager_loads_all_sounds`
+  assertion expected 10 items but got 11 after `ChestCreak.wav` was added in a
+  prior release. Count and docstring updated; `_chest_creak` assertion added.
+
+---
+
 ## [1.0.11] — 2026-05-27
 
 ### Added

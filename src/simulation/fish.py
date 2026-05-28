@@ -395,6 +395,14 @@ def _update_frog(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
         f.y = float(tank_h) - 24
         f.speed = 0.0
         f.desired_speed = 0.0
+        # Push out of the castle X zone (frog should not idle in transparent arches)
+        _cx0r = _CASTLE_X0_F * tank_w - 10.0
+        _cx1r = _CASTLE_X1_F * tank_w + 10.0
+        if _cx0r < f.x < _cx1r:
+            if f.x - _cx0r <= _cx1r - f.x:
+                f.x = _cx0r
+            else:
+                f.x = _cx1r
         # Idle animation: cycle frames 0-2
         f.frame_time += dt
         if f.frame_time >= 0.9:
@@ -424,6 +432,19 @@ def _update_frog(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
         f.x += math.cos(f.heading) * f.speed * dt
         f.y = float(tank_h) - 24
         f.x = max(float(margin), min(float(tank_w - margin), f.x))
+        # Avoid swimming through the castle zone (transparent arches would reveal frog)
+        _cx0 = _CASTLE_X0_F * tank_w - 10.0
+        _cx1 = _CASTLE_X1_F * tank_w + 10.0
+        if _cx0 < f.x < _cx1:
+            # Push to nearest castle edge and reverse heading
+            if f.x - _cx0 <= _cx1 - f.x:
+                f.x = _cx0
+                f.facing = -1
+                f.heading = math.pi + random.uniform(-0.35, 0.35)
+            else:
+                f.x = _cx1
+                f.facing = 1
+                f.heading = random.uniform(-0.35, 0.35)
         if f.x <= float(margin) + 1.0:
             f.facing = 1
             f.heading = random.uniform(-0.35, 0.35)
@@ -528,6 +549,19 @@ def _update_motion(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
     if f.personality_type == "energetic":
         f.desired_speed *= 1.30
 
+    # Castle-lurking species: gently bias heading toward the castle sides when wandering.
+    # They bounce off the castle exclusion zone naturally, creating a patrol effect.
+    if sp.get("lurk_castle") and f.state in ("wander", "drift") and random.random() < dt * 0.06:
+        castle_cx = tank_w * (_CASTLE_X0_F + _CASTLE_X1_F) * 0.5
+        # Aim for the nearer castle edge (they'll bounce off the exclusion zone wall)
+        if f.x < castle_cx:
+            target_x = tank_w * _CASTLE_X0_F - 8.0
+        else:
+            target_x = tank_w * _CASTLE_X1_F + 8.0
+        ang_to = math.atan2(0.0, target_x - f.x)   # purely horizontal
+        delta = ((ang_to - f.heading + math.pi) % (2 * math.pi)) - math.pi
+        f.heading += delta * 0.40
+
     # Hunger surface drift: when hungry, add upward velocity bias
     hunger_drift_vy = 0.0
     if not bottom and not crawler and f.hunger > 0.65:
@@ -564,13 +598,21 @@ def _update_motion(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
     ymax = tank_h * LAYER_Y_MAX_FRAC[f.layer]
     if f.x < margin:
         f.x = margin
-        # Reflect heading across X-axis (mirror the horizontal component)
-        f.heading = math.pi - f.heading + (random.random() - 0.5) * 0.3
+        # For bottom/lurk fish use a wider scatter angle so they don't hug the wall
+        scatter = 0.6 if (bottom or crawler or sp.get("lurk_castle")) else 0.3
+        f.heading = math.pi - f.heading + (random.random() - 0.5) * scatter
         f.facing_cd = 0.0   # allow immediate facing update after bounce
+        # Crawlers: heading is overridden from facing at the top of the next
+        # frame, so we must update facing NOW or the bounce will be undone.
+        if crawler:
+            f.facing = 1   # bounced off left wall → face right
     elif f.x > tank_w - margin:
         f.x = tank_w - margin
-        f.heading = math.pi - f.heading + (random.random() - 0.5) * 0.3
+        scatter = 0.6 if (bottom or crawler or sp.get("lurk_castle")) else 0.3
+        f.heading = math.pi - f.heading + (random.random() - 0.5) * scatter
         f.facing_cd = 0.0
+        if crawler:
+            f.facing = -1  # bounced off right wall → face left
     top_margin = LAYER_Y_TOP[f.layer]
     # Compute accurate sprite half-height from species size + biological scale
     sp_ss  = _species_size_scale(f.sp)
@@ -598,6 +640,12 @@ def _update_motion(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
         elif f.y > ymax - half_h:
             f.y = ymax - half_h
             f.heading = -f.heading + (random.random() - 0.5) * 0.2
+
+    # Hard clamp: safety net when the window is resized smaller so that fish
+    # are never stuck outside the new tank bounds waiting for a bounce event.
+    f.x = max(2.0, min(float(tank_w) - 2.0, f.x))
+    if not (bottom or crawler):
+        f.y = max(2.0, min(float(tank_h) - 2.0, f.y))
 
 
 def _apply_schooling(f: Fish, fish_list: list, dt: float) -> None:
@@ -645,23 +693,41 @@ def _start_grazing(f: Fish, tank_w: int, tank_h: int,
     Picks an unoccupied wall surface (bottom, left, or right glass), sets
     the fish position/angle for that surface, and forces it to the front
     layer so it renders on top of all decorations.
+
+    The wall nearest to the fish's *current* position is tried first to
+    avoid a visible teleport; only a small nudge is applied if another
+    grazer is already too close.
     """
     f.layer    = 1
     f.layer_cd = random.uniform(30.0, 60.0)   # stay front after grazing ends
 
     other_grazers = [g for g in (fish_list or []) if g is not f and g.is_grazing]
     _GAP = 40   # minimum pixel gap between two grazers on the same surface
+    mx   = LAYER_X_MARGIN[1] + 24
 
-    # Candidate walls; bottom is most common for algae eaters
-    wall_pool = ["bottom", "bottom", "bottom", "left", "right"]
-    random.shuffle(wall_pool)
+    # Rank walls by proximity to current fish position (nearest first).
+    # This means the transition never picks a distant random wall.
+    wall_order = sorted(
+        [("bottom", tank_h - f.y),
+         ("left",   f.x),
+         ("right",  tank_w - f.x)],
+        key=lambda w: w[1],
+    )
 
-    for wall in wall_pool:
+    for wall, _ in wall_order:
         if wall == "bottom":
             occupied = [g.x for g in other_grazers if g.graze_wall == "bottom"]
-            mx = LAYER_X_MARGIN[1] + 24
+            # Try current x first (clamped to valid range)
+            candidate = max(float(mx), min(float(tank_w - mx), f.x))
+            if all(abs(candidate - ox) >= _GAP for ox in occupied):
+                f.graze_wall  = "bottom"
+                f.graze_angle = 0.0
+                f.x = candidate
+                return
+            # Small nudges around current x if a neighbour is too close
             for _ in range(10):
-                gx = random.uniform(mx, tank_w - mx)
+                gx = candidate + random.uniform(-_GAP * 2, _GAP * 2)
+                gx = max(float(mx), min(float(tank_w - mx), gx))
                 if all(abs(gx - ox) >= _GAP for ox in occupied):
                     f.graze_wall  = "bottom"
                     f.graze_angle = 0.0
@@ -669,26 +735,41 @@ def _start_grazing(f: Fish, tank_w: int, tank_h: int,
                     return
         elif wall == "left":
             occupied = [g.y for g in other_grazers if g.graze_wall == "left"]
+            candidate = max(float(LAYER_Y_TOP[1] + 20), min(float(tank_h * 0.70), f.y))
+            if all(abs(candidate - oy) >= _GAP for oy in occupied):
+                f.graze_wall  = "left"
+                f.graze_angle = -90.0   # CW: belly faces right (into tank)
+                f.y = candidate
+                return
             for _ in range(10):
-                gy = random.uniform(LAYER_Y_TOP[1] + 20, tank_h * 0.70)
+                gy = candidate + random.uniform(-_GAP * 2, _GAP * 2)
+                gy = max(float(LAYER_Y_TOP[1] + 20), min(float(tank_h * 0.70), gy))
                 if all(abs(gy - oy) >= _GAP for oy in occupied):
                     f.graze_wall  = "left"
-                    f.graze_angle = -90.0   # CW: belly faces right (into tank)
+                    f.graze_angle = -90.0
                     f.y = gy
                     return
         elif wall == "right":
             occupied = [g.y for g in other_grazers if g.graze_wall == "right"]
+            candidate = max(float(LAYER_Y_TOP[1] + 20), min(float(tank_h * 0.70), f.y))
+            if all(abs(candidate - oy) >= _GAP for oy in occupied):
+                f.graze_wall  = "right"
+                f.graze_angle = 90.0    # CCW: belly faces left (into tank)
+                f.y = candidate
+                return
             for _ in range(10):
-                gy = random.uniform(LAYER_Y_TOP[1] + 20, tank_h * 0.70)
+                gy = candidate + random.uniform(-_GAP * 2, _GAP * 2)
+                gy = max(float(LAYER_Y_TOP[1] + 20), min(float(tank_h * 0.70), gy))
                 if all(abs(gy - oy) >= _GAP for oy in occupied):
                     f.graze_wall  = "right"
-                    f.graze_angle = 90.0    # CCW: belly faces left (into tank)
+                    f.graze_angle = 90.0
                     f.y = gy
                     return
 
-    # Fallback: graze on the bottom at current x
+    # Fallback: bottom at clamped current x — no teleport
     f.graze_wall  = "bottom"
     f.graze_angle = 0.0
+    f.x = max(float(mx), min(float(tank_w - mx), f.x))
 
 
 def update_fish(f: Fish, tank_w: int, tank_h: int, dt: float,
@@ -797,7 +878,30 @@ def update_fish(f: Fish, tank_w: int, tank_h: int, dt: float,
                 nearest.eaten = True
                 f.hunger = max(0.0, f.hunger - 0.45)
                 f.state = "wander"
+                f.target = None
                 f.state_time = random.uniform(1.5, 4.0)
+        else:
+            # No reachable food — if we were chasing a now-gone pellet, snap out
+            if f.state == "chase":
+                f.state = "wander"
+                f.target = None
+                f.state_time = random.uniform(1.5, 3.0)
+    elif f.state == "chase":
+        # In chase state but food hunt is inactive (no food list or not hungry)
+        f.state = "wander"
+        f.target = None
+        f.state_time = random.uniform(1.5, 3.0)
+
+    # Non-algae-eater crawlers (e.g. Kuhli Loach) eat nearby grounded food
+    if f.sp.get("crawler") and not f.sp.get("algae_eater") and food_list and f.hunger > 0.45:
+        for p in food_list:
+            if p.active and p.grounded and not p.eaten:
+                dx = p.x - f.x
+                dy = p.y - f.y
+                if dx * dx + dy * dy < 32 * 32:
+                    p.eaten = True
+                    f.hunger = max(0.0, f.hunger - 0.40)
+                    break
 
     # Schooling: sociable fish with same-species neighbors align + cohere
     if f.sp.get("sociable") and fish_list:

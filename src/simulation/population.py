@@ -88,11 +88,18 @@ def maybe_change_layer(f: Fish, tank_h: int, dt: float) -> None:
     Fish with a layer_pref are twice as likely to drift *back* toward their
     preferred layer than to move away from it.
     """
+    # Bottom and crawler species stay pinned to layer 1 at all times.
+    # Changing their layer alters the LAYER_SCALE used in the y-pin formula,
+    # causing their floor-y position to shift by several pixels instantly —
+    # which looks like a teleport.  Their visual depth is always "front".
+    if f.sp.get("bottom") or f.sp.get("crawler"):
+        if f.layer != 1:
+            f.layer = 1   # correct any stale layer from a loaded save
+        return
     if f.layer_cd > 0:
         return
-    is_floor = f.sp.get("bottom") or f.sp.get("crawler")
-    rate = 0.0033 if is_floor else 0.01   # bottom fish: ~once per 300 s
-    if random.random() >= dt * rate:
+
+    if random.random() >= dt * 0.01:   # pelagic: ~once per 100 s
         return
 
     pref = f.sp.get("layer_pref", 0)
@@ -104,7 +111,6 @@ def maybe_change_layer(f: Fish, tank_h: int, dt: float) -> None:
 
     if new_layer != f.layer:
         f.layer = new_layer
-        if not is_floor:
-            ymax = tank_h * LAYER_Y_MAX_FRAC[new_layer]
-            f.y = min(f.y, ymax - 12)
+        ymax = tank_h * LAYER_Y_MAX_FRAC[new_layer]
+        f.y = min(f.y, ymax - 12)
         f.layer_cd = 60.0

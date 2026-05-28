@@ -349,9 +349,9 @@ class FishStorePanel:
         # Close button (X)
         x_rect = pygame.Rect(tb.right - _TB_H + 1, tb.top + 1, _TB_H - 2, _TB_H - 2)
         self._close_rect = x_rect
-        pygame.draw.rect(surface, WIN_GRAY, x_rect)
+        pygame.draw.rect(surface, (180, 80, 80), x_rect)
         _bevel(surface, x_rect)
-        xf = self.font.render("X", True, (0, 0, 0))
+        xf = self.font.render("x", True, WIN_LIGHT)
         surface.blit(xf, (x_rect.centerx - xf.get_width() // 2,
                            x_rect.centery - xf.get_height() // 2))
 

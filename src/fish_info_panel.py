@@ -366,7 +366,7 @@ class FishInfoPanel:
         # ── Mood indicator ────────────────────────────────────────
         mood = getattr(f, "mood", "content")
         mood_face  = {"happy": "☺", "content": "—", "stressed": "☹", "hungry": "o"}.get(mood, "—")
-        mood_color = {"happy": (30, 200, 60), "content": (220, 200, 40),
+        mood_color = {"happy": (30, 200, 60), "content": (80, 200, 80),
                       "stressed": (220, 60, 60), "hungry": (220, 160, 20)}.get(mood, (128, 128, 128))
         mood_s = fnt.render(f"{mood_face} {mood.capitalize()}", True, mood_color)
         surface.blit(mood_s, (rx, sp_y + fh + 2))

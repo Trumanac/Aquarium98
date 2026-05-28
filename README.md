@@ -168,6 +168,7 @@ Your first-ever tank and any full reset pick a fresh castle/decor from 5 options
 | Pause / Resume | **Space** |
 | Open Settings | **E** |
 | Minimize to tray | **Esc** |
+| Show/hide toolbar | **Tab** |
 | Quit | **Ctrl+Q** |
 | Move window | Drag title bar |
 | Resize | Drag bottom-right corner |

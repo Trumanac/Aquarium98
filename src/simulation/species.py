@@ -199,7 +199,7 @@ SPECIES: list[dict] = [
     # ── Kuhli Loach ───────────────────────────────────────────────────────
     dict(name="Kuhli Loach",  body=(210, 150, 50),  fin=(50, 35, 20),   accent=(20, 15, 5),
          size=9, speed=14, sociable=True,  pattern="stripes", aspect=0.32, fin_style="low",
-         bottom=True, crawler=True, uncommon=True, school_size=2, layer_pref=1, sheet="KuhliLoach_Fish.png",
+         bottom=True, crawler=True, lurk_castle=True, uncommon=True, school_size=2, layer_pref=1, sheet="KuhliLoach_Fish.png",
          fun_facts=[
              "Kuhli Loaches bury themselves completely in soft substrate — they can vanish for days and reappear only when lights go off.",
              "Despite looking like eels, they are true fish; their scales are simply so small they appear smooth from a distance.",
@@ -263,7 +263,7 @@ SPECIES: list[dict] = [
     # Gobioides broussonnetii. Eel-like, iridescent silvery-blue, bottom-hugging.
     dict(name="Dragon Goby", body=(140, 170, 220), fin=(100, 130, 180), accent=(200, 210, 120),
          size=14, speed=9, sociable=False, pattern="none", aspect=0.45, fin_style="low",
-         bottom=True, algae_eater=True, layer_pref=1, sheet="DragonGoby_Fish.png", rare=True,
+         bottom=True, algae_eater=True, lurk_castle=True, layer_pref=1, sheet="DragonGoby_Fish.png", rare=True,
          fun_facts=[
              "Despite its fearsome mouth full of sharp teeth, the Dragon Goby feeds almost entirely on algae — those teeth are for scraping, not fighting.",
              "It is nearly blind, relying on vibration and smell to find food; it will lose out to any faster tankmate at feeding time.",

@@ -309,40 +309,32 @@ def set_position(sdl_win, x: int, y: int) -> None:
         log.debug("set_position failed: %s", e)
 
 
-def set_window_size(sdl_win, w: int, h: int) -> None:
+def set_window_size(sdl_win, w: int, h: int, *, clamp: bool = True) -> None:
     """Resize the native OS window without touching the pygame surface.
 
-    This is step-1 of a flash-free resize: it moves the OS window to the new
-    size and queues a ``pygame.WINDOWRESIZED`` event, but does NOT call
-    ``set_mode()`` or touch the renderer.  The caller should:
-      1. Call this function.
-      2. Call ``pygame.event.pump()`` to flush the SDL event.
-      3. Drain the queued ``WINDOWRESIZED`` via ``pygame.event.get(pygame.WINDOWRESIZED)``.
-      4. Call ``resize_surface(w, h)`` — because the SDL window already has the
-         target size, ``set_mode()`` only updates the renderer in-place instead
-         of recreating the window, so there is no black flash and no grab loss.
+    Pass ``clamp=False`` for windowed-fullscreen where dimensions may exceed
+    the normal MAX_W/MAX_H limits.
     """
     if sdl_win is None:
         return
-    w = max(MIN_W, min(MAX_W, int(w)))
-    h = max(MIN_H, min(MAX_H, int(h)))
+    if clamp:
+        w = max(MIN_W, min(MAX_W, int(w)))
+        h = max(MIN_H, min(MAX_H, int(h)))
     try:
         sdl_win.size = (w, h)
     except Exception as e:   # noqa: BLE001
         log.debug("set_window_size failed: %s", e)
 
 
-def resize_surface(w: int, h: int, sdl_win=None) -> pygame.Surface:
+def resize_surface(w: int, h: int, sdl_win=None, *, clamp: bool = True) -> pygame.Surface:
     """Resize the pygame display surface to (w, h).
 
-    For a smooth, flash-free resize call ``set_window_size(sdl_win, w, h)``
-    first so the SDL window already has the target dimensions.  When
-    ``set_mode()`` is called and the SDL window is already at (w, h), SDL2
-    updates the renderer backing-store in-place instead of recreating the
-    window — eliminating the black-flash and preserving event-grab state.
+    Pass ``clamp=False`` for windowed-fullscreen where w/h may exceed
+    the normal MAX_W/MAX_H limits.
     """
-    w = max(MIN_W, min(MAX_W, int(w)))
-    h = max(MIN_H, min(MAX_H, int(h)))
+    if clamp:
+        w = max(MIN_W, min(MAX_W, int(w)))
+        h = max(MIN_H, min(MAX_H, int(h)))
     return pygame.display.set_mode((w, h), pygame.NOFRAME | pygame.RESIZABLE)
 
 
@@ -361,18 +353,104 @@ def get_sdl_window():
         return None
 
 
+def get_monitor_rect_for_window(sdl_win) -> tuple[int, int, int, int]:
+    """Return (x, y, w, h) of the monitor that currently contains sdl_win.
+
+    Uses MonitorFromPoint + GetMonitorInfoW on Windows for accuracy across any
+    multi-monitor layout (including vertical stacks and negative-X monitors).
+    Falls back to estimating via cumulative widths on other platforms.
+    """
+    pos = get_position(sdl_win)
+    px, py = pos if pos else (0, 0)
+
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            import ctypes.wintypes
+            # Use a point near the window's top-left to locate the monitor
+            pt = ctypes.wintypes.POINT(px + 60, py + 30)
+            MONITOR_DEFAULTTONEAREST = 2
+            mon = ctypes.windll.user32.MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)  # type: ignore[attr-defined]
+
+            class _MONITORINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize",    ctypes.c_ulong),
+                    ("rcMonitor", ctypes.wintypes.RECT),
+                    ("rcWork",    ctypes.wintypes.RECT),
+                    ("dwFlags",   ctypes.c_ulong),
+                ]
+
+            mi = _MONITORINFO()
+            mi.cbSize = ctypes.sizeof(_MONITORINFO)
+            ctypes.windll.user32.GetMonitorInfoW(mon, ctypes.byref(mi))  # type: ignore[attr-defined]
+            r = mi.rcMonitor
+            return (r.left, r.top, r.right - r.left, r.bottom - r.top)
+        except Exception:  # noqa: BLE001
+            pass  # fall through to generic fallback
+
+    # Generic fallback: assume monitors are arranged left-to-right and find
+    # which one the window's left edge falls in.
+    try:
+        sizes = pygame.display.get_desktop_sizes()
+        if sizes:
+            offset = 0
+            for sw, sh in sizes:
+                if offset <= px < offset + sw:
+                    return (offset, 0, sw, sh)
+                offset += sw
+            # Past the last monitor — use the last one
+            return (offset - sizes[-1][0], 0, sizes[-1][0], sizes[-1][1])
+    except Exception:  # noqa: BLE001
+        pass
+
+    sizes = pygame.display.get_desktop_sizes()
+    w, h = sizes[0] if sizes else (1920, 1080)
+    return (0, 0, w, h)
+
+
 def close_button_rect(w: int, h: int) -> "pygame.Rect":
     """Win98-style close button in the top-right corner of the title bar."""
     return pygame.Rect(w - 21, 4, 18, 16)
+
+
+def fullscreen_button_rect(w: int, h: int) -> pygame.Rect:
+    """Win98-style fullscreen/restore button — second from right in the title bar."""
+    return pygame.Rect(w - 40, 4, 18, 16)
+
+
+def minimize_button_rect(w: int, h: int) -> pygame.Rect:
+    """Win98-style minimize button — third from right in the title bar."""
+    return pygame.Rect(w - 59, 4, 18, 16)
+
+
+def toolbar_toggle_btn_rect(w: int, h: int) -> pygame.Rect:
+    """Toolbar collapse/expand toggle — left of the title bar."""
+    return pygame.Rect(3, 4, 14, 16)
 
 
 def in_close_button(x: int, y: int, w: int, h: int) -> bool:
     return close_button_rect(w, h).inflate(8, 8).collidepoint(x, y)
 
 
+def in_fullscreen_button(x: int, y: int, w: int, h: int) -> bool:
+    return fullscreen_button_rect(w, h).inflate(8, 8).collidepoint(x, y)
+
+
+def in_minimize_button(x: int, y: int, w: int, h: int) -> bool:
+    return minimize_button_rect(w, h).inflate(8, 8).collidepoint(x, y)
+
+
+def in_toolbar_toggle_btn(x: int, y: int, w: int, h: int) -> bool:
+    return toolbar_toggle_btn_rect(w, h).inflate(4, 8).collidepoint(x, y)
+
+
 def in_title_bar(x: int, y: int, w: int, h: int) -> bool:
-    # Exclude the close button so clicking it doesn't start a drag.
-    return 0 <= x < w and 0 <= y < TITLE_BAR_H and not in_close_button(x, y, w, h)
+    # Exclude all chrome buttons so clicking them doesn't start a drag.
+    return (0 <= x < w and 0 <= y < TITLE_BAR_H
+            and not in_close_button(x, y, w, h)
+            and not in_fullscreen_button(x, y, w, h)
+            and not in_minimize_button(x, y, w, h)
+            and not in_toolbar_toggle_btn(x, y, w, h))
 
 
 def in_resize_handle(x: int, y: int, w: int, h: int) -> bool:

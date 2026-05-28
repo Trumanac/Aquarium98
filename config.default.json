@@ -45,5 +45,14 @@
   "event_log": [],
   "graveyard": [],
   "coins": 0,
-  "difficulty": 2
+  "difficulty": 2,
+  "music_volume": 0.25,
+  "music_muted": false,
+  "music_playing": true,
+  "music_player_visible": false,
+  "music_loop_track": false,
+  "toolbar_collapsed": false,
+  "stat_session_fish_hist": [],
+  "stat_session_algae_hist": [],
+  "stat_session_coins_hist": []
 }

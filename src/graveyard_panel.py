@@ -105,12 +105,20 @@ class GraveyardPanel:
         self.visible = False
 
     # ------------------------------------------------------------------
-    def handle_event(self, ev: pygame.event.Event) -> bool:
+    def handle_event(self, ev: pygame.event.Event,
+                     cfg: dict | None = None) -> bool | str:
         if not self.visible:
             return False
         if ev.type == pygame.MOUSEWHEEL:
             self._scroll = max(0, self._scroll - ev.y * _ROW_H)
             return True
+        if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 3:
+            # Easter egg: right-click an empty graveyard
+            if self._rect.collidepoint(ev.pos):
+                graveyard = (cfg.get("graveyard") if cfg else None) or []
+                if not graveyard:
+                    return "empty_graveyard_rclick"
+                return True
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
             if self._close_btn.inflate(8, 8).collidepoint(ev.pos):
                 self.close()
@@ -166,6 +174,7 @@ class GraveyardPanel:
         # Close button
         self._close_btn = pygame.Rect(self._rect.right - 3 - _TB_H, py + 3, _TB_H, _TB_H)
         pygame.draw.rect(surface, (180, 80, 80), self._close_btn)
+        _bevel(surface, self._close_btn)
         xs = self.font.render("x", True, WIN_LIGHT)
         surface.blit(xs, (
             self._close_btn.left + (self._close_btn.w - xs.get_width()) // 2,

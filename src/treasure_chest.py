@@ -169,6 +169,10 @@ class TreasureChest:
         fi  = max(0, min(8, int(self.frame)))
         cache_key = (fi, dw, dh)
         if cache_key not in self._frame_cache:
+            # Evict stale entries when the cache grows too large (e.g. after
+            # many window resizes) to avoid unbounded surface accumulation.
+            if len(self._frame_cache) >= 32:
+                self._frame_cache.clear()
             sw, sh = sheet.get_size()
             fw, fh = sw // 3, sh // 3
             col, row = fi % 3, fi // 3

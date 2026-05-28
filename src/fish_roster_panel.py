@@ -13,19 +13,48 @@ WIN_LIGHT = (255, 255, 255)
 WIN_DARK  = (64,  64,  64)
 PANEL_BG  = (0,   20,  50,  195)   # semi-transparent dark blue (RGBA)
 
+
+def _bevel(surf: pygame.Surface, r: pygame.Rect, pressed: bool = False) -> None:
+    tl = WIN_DARK  if pressed else WIN_LIGHT
+    br = WIN_LIGHT if pressed else WIN_DARK
+    pygame.draw.line(surf, tl, r.topleft, (r.right - 1, r.top))
+    pygame.draw.line(surf, tl, r.topleft, (r.left, r.bottom - 1))
+    pygame.draw.line(surf, br, (r.right - 1, r.top), (r.right - 1, r.bottom - 1))
+    pygame.draw.line(surf, br, (r.left, r.bottom - 1), (r.right - 1, r.bottom - 1))
+
 # RPG rarity colours (match fish_info_panel)
 _COL_UNCOMMON   = (60,  210,  80)
 _COL_RARE       = (80,  150, 255)
 _COL_SUPER_RARE = (180,  70, 240)
+
+
+def _draw_mood_dot(surf: pygame.Surface, cx: int, cy: int, r: int,
+                  mood: str, col: tuple) -> None:
+    """Draw a mood indicator circle; 'happy' gets a pixel smiley face."""
+    pygame.draw.circle(surf, col, (cx, cy), r)
+    pygame.draw.circle(surf, (0, 0, 0), (cx, cy), r, 1)
+    if mood == "happy":
+        e  = max(1, r // 3)
+        pygame.draw.circle(surf, (0, 0, 0), (cx - e, cy - e), 1)
+        pygame.draw.circle(surf, (0, 0, 0), (cx + e, cy - e), 1)
+        sm = max(2, r // 2)
+        pygame.draw.line(surf, (0, 0, 0),
+                         (cx - sm, cy + sm // 2), (cx, cy + sm), 1)
+        pygame.draw.line(surf, (0, 0, 0),
+                         (cx, cy + sm), (cx + sm, cy + sm // 2), 1)
 ROW_H     = 30
 ROW_SEP   = 2
 THUMB_W   = 38
 THUMB_H   = 28
-PW        = 106   # panel width
+PW        = 150   # panel width
 
 
 class FishRosterPanel:
     """Draws a scrollable list of fish inside the left edge of the tank."""
+
+    # Sort modes cycle order and labels
+    _SORT_MODES = ["recent", "rarity", "species", "name"]
+    _SORT_LABELS = {"recent": "\u2193 Newest", "rarity": "\u2605 Rarity", "species": "Species", "name": "Name A-Z"}
 
     def __init__(self, font: pygame.font.Font):
         self.font    = font
@@ -40,6 +69,8 @@ class FishRosterPanel:
         self._thumb_cache: dict[int, pygame.Surface] = {}
         # Surface caches for semi-transparent overlays (avoid per-frame alloc)
         self._close_btn  = pygame.Rect(0, 0, 0, 0)
+        self._sort_btn   = pygame.Rect(0, 0, 0, 0)
+        self._sort_mode: str = "recent"   # current sort mode
         self._overlay: pygame.Surface | None = None
         self._overlay_size = (0, 0)
         self._row_bg_normal: pygame.Surface | None = None
@@ -79,17 +110,44 @@ class FishRosterPanel:
             if self._close_btn.inflate(8, 8).collidepoint(ev.pos):
                 self.close()
                 return True
+            # Sort button — cycle through sort modes
+            if self._sort_btn.inflate(4, 8).collidepoint(ev.pos):
+                idx = self._SORT_MODES.index(self._sort_mode)
+                self._sort_mode = self._SORT_MODES[(idx + 1) % len(self._SORT_MODES)]
+                self._scroll = 0
+                return True
             row = self._row_at(ev.pos)
             if row is not None:
+                sorted_fish = self._sorted_fish(fish_list)
                 idx = self._scroll + row
-                if 0 <= idx < len(fish_list):
-                    return idx
+                if 0 <= idx < len(sorted_fish):
+                    # Return the position in the *original* list so callers open the right fish
+                    target = sorted_fish[idx]
+                    return fish_list.index(target)
                 return True
             if self._rect.collidepoint(ev.pos):
                 return True
             self.close()
             return None
         return None
+
+    def _sorted_fish(self, fish_list: list) -> list:
+        """Return a view of fish_list sorted by current _sort_mode."""
+        _RARITY_RANK = {"super_rare": 0, "rare": 1, "uncommon": 2}
+        def _rarity(f):
+            if f.sp.get("super_rare"): return 0
+            if f.sp.get("rare"):       return 1
+            if f.sp.get("uncommon"):   return 2
+            return 3
+        if self._sort_mode == "recent":
+            return list(reversed(fish_list))    # newest (last-appended) first
+        if self._sort_mode == "rarity":
+            return sorted(fish_list, key=lambda f: (_rarity(f), f.name.lower()))
+        if self._sort_mode == "species":
+            return sorted(fish_list, key=lambda f: (f.sp["name"].lower(), f.name.lower()))
+        if self._sort_mode == "name":
+            return sorted(fish_list, key=lambda f: f.name.lower())
+        return list(fish_list)   # fallback
 
     def _row_at(self, pos: tuple[int, int]) -> int | None:
         for i, rr in enumerate(self._rows):
@@ -117,7 +175,8 @@ class FishRosterPanel:
         self._rect = pygame.Rect(px, py, PW, ph)
 
         # Clamp scroll
-        max_scroll = max(0, len(fish_list) - visible_rows)
+        sorted_fish = self._sorted_fish(fish_list)
+        max_scroll = max(0, len(sorted_fish) - visible_rows)
         self._scroll = min(self._scroll, max_scroll)
 
         # Draw semi-transparent background (cached to avoid per-frame alloc)
@@ -134,18 +193,34 @@ class FishRosterPanel:
         surface.blit(htxt, (hbar.left + 5,
                              hbar.top + (header_h - htxt.get_height()) // 2))
 
-        # Close (×) button — widen to 18 px to match other panels
+        # Close (×) button
         self._close_btn = pygame.Rect(hbar.right - 20, hbar.top + 3, 16, 14)
         pygame.draw.rect(surface, (180, 80, 80), self._close_btn)
+        _bevel(surface, self._close_btn)
         xs = self.font.render("x", True, WIN_LIGHT)
         surface.blit(xs, (self._close_btn.left + (self._close_btn.w - xs.get_width()) // 2,
                            self._close_btn.top  + (self._close_btn.h - xs.get_height()) // 2))
 
+        # Sort button — compact, just left of close
+        sort_lbl = self._SORT_LABELS[self._sort_mode]
+        slbl_surf = self.font.render(sort_lbl, True, (220, 220, 80))
+        sort_btn_w = slbl_surf.get_width() + 6
+        self._sort_btn = pygame.Rect(hbar.right - 20 - 2 - sort_btn_w,
+                                     hbar.top + 3, sort_btn_w, 14)
+        pygame.draw.rect(surface, (30, 70, 150), self._sort_btn)
+        pygame.draw.rect(surface, (80, 120, 200), self._sort_btn, 1)
+        surface.blit(slbl_surf, (self._sort_btn.left + 3,
+                                  self._sort_btn.top + (14 - slbl_surf.get_height()) // 2))
+
         # Rows
         self._rows = []
         self.tip_regions = []
+        self.tip_regions.append((
+            self._sort_btn.inflate(4, 8),
+            f"Sort: {self._sort_mode.capitalize()} — click to cycle (Recent/Rarity/Species/Name)",
+        ))
         ry = py + header_h + 2
-        visible_fish = fish_list[self._scroll: self._scroll + visible_rows]
+        visible_fish = sorted_fish[self._scroll: self._scroll + visible_rows]
         for i, f in enumerate(visible_fish):
             rr = pygame.Rect(px + 2, ry, PW - 4, ROW_H)
             self._rows.append(rr)
@@ -159,6 +234,11 @@ class FishRosterPanel:
                 self._row_bg_hover.fill((40, 80, 160, 160))
                 self._row_bg_size = (row_w, row_h)
             surface.blit(self._row_bg_hover if is_hover else self._row_bg_normal, rr.topleft)
+
+            # Nemo easter egg: orange glow border for player-renamed fish called "Nemo"
+            if getattr(f, "custom_name", False) and f.name.lower() == "nemo":
+                pygame.draw.rect(surface, (255, 120, 0), rr, 2)
+                pygame.draw.rect(surface, (255, 200, 80), rr.inflate(-2, -2), 1)
 
             # Thumbnail
             thumb = self._get_thumb(f)
@@ -180,26 +260,26 @@ class FishRosterPanel:
                 rarity_col = _COL_UNCOMMON
             else:
                 rarity_col = None
-            # Rarity dot (3 px radius) just to right of thumbnail
-            dot_x = rr.left + THUMB_W + 5
+            # Rarity dot (6 px radius) just to right of thumbnail
+            dot_x = rr.left + THUMB_W + 8
             dot_y = rr.top + ROW_H // 2
             if rarity_col:
-                pygame.draw.circle(surface, rarity_col, (dot_x, dot_y), 3)
-                name_off = 8   # offset name past the dot
+                pygame.draw.circle(surface, rarity_col, (dot_x, dot_y), 6)
+                pygame.draw.circle(surface, (0, 0, 0),  (dot_x, dot_y), 6, 1)
+                name_off = 14   # offset name past the dot
             else:
                 name_off = 0
 
-            # Mood indicator: small filled circle at right edge of row
+            # Mood indicator: filled circle at right edge of row
             # (text emoticons are unreliable in the Win98 bitmap font)
             mood = getattr(f, "mood", "content")
-            mood_col = {"happy": (30, 200, 60), "content": (220, 200, 40),
+            mood_col = {"happy": (30, 200, 60), "content": (80, 200, 80),
                         "stressed": (220, 60, 60), "hungry": (220, 160, 20)
                         }.get(mood, (128, 128, 128))
-            ind_r  = 4
-            ind_cx = rr.right - ind_r - 3
+            ind_r  = 6
+            ind_cx = rr.right - ind_r - 4
             ind_cy = rr.top + ROW_H // 2
-            pygame.draw.circle(surface, mood_col, (ind_cx, ind_cy), ind_r)
-            pygame.draw.circle(surface, (0, 0, 0),  (ind_cx, ind_cy), ind_r, 1)
+            _draw_mood_dot(surface, ind_cx, ind_cy, ind_r, mood, mood_col)
 
             # Register tooltip regions for rarity and mood dots
             _mood_tips = {"happy": "Happy — well-fed and thriving",
@@ -233,10 +313,10 @@ class FishRosterPanel:
             ry += ROW_H + ROW_SEP
 
         # Scroll indicator
-        if len(fish_list) > visible_rows:
-            total = max(1, len(fish_list) - visible_rows)
+        if len(sorted_fish) > visible_rows:
+            total = max(1, len(sorted_fish) - visible_rows)
             frac_top = self._scroll / total
-            frac_bot = min(1.0, (self._scroll + visible_rows) / len(fish_list))
+            frac_bot = min(1.0, (self._scroll + visible_rows) / len(sorted_fish))
             bar_x   = px + PW - 5
             bar_top = py + header_h + 2
             bar_bot = py + ph - 2

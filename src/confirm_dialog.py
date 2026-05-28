@@ -533,6 +533,119 @@ class AboutDialog:
 
 
 # ---------------------------------------------------------------------------
+# InfoDialog — simple read-only message box with OK
+# ---------------------------------------------------------------------------
+
+class InfoDialog:
+    """Win98-style informational message box with a single OK button.
+
+    Usage::
+        dlg = InfoDialog(font)
+        dlg.open("Title", "Message text.", screen_w, screen_h)
+        # each frame:
+        result = dlg.handle_event(ev)  # returns "ok" or None
+        dlg.draw(surface)
+    """
+
+    _PW = 280
+
+    def __init__(self, font: pygame.font.Font) -> None:
+        self.font    = font
+        self.visible = False
+        self._title  = ""
+        self._body_lines: list[str] = []
+        self._rect   = pygame.Rect(0, 0, self._PW, 100)
+        self._ok_btn = pygame.Rect(0, 0, _BTN_W, _BTN_H)
+        self._ok_press = False
+        self._title_surf: pygame.Surface | None = None
+        self._title_surf_w: int = 0
+
+    def open(self, title: str, body: str, screen_w: int, screen_h: int) -> None:
+        self._title = title
+        fh = self.font.get_height()
+        self._body_lines = _wrap(self.font, body, self._PW - _PAD * 2)
+        body_h = len(self._body_lines) * (fh + 2)
+        ph = _TB_H + _PAD * 2 + body_h + _PAD + _BTN_H + _PAD
+        self._rect = pygame.Rect(
+            (screen_w - self._PW) // 2,
+            (screen_h - ph) // 2,
+            self._PW, ph,
+        )
+        r = self._rect
+        self._ok_btn = pygame.Rect(
+            r.left + (r.w - _BTN_W) // 2,
+            r.bottom - _PAD - _BTN_H,
+            _BTN_W, _BTN_H,
+        )
+        self._ok_press = False
+        self.visible   = True
+
+    def close(self) -> None:
+        self.visible = False
+
+    def handle_event(self, ev: pygame.event.Event) -> str | None:
+        if not self.visible:
+            return None
+        if ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+            self.close()
+            return "ok"
+        if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            if self._ok_btn.inflate(8, 8).collidepoint(ev.pos):
+                self._ok_press = True
+        elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+            if self._ok_press and self._ok_btn.inflate(8, 8).collidepoint(ev.pos):
+                self.close()
+                return "ok"
+            self._ok_press = False
+        return None
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if not self.visible:
+            return
+        r   = self._rect
+        fnt = self.font
+        fh  = fnt.get_height()
+
+        # Dim veil
+        veil = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, 80))
+        surface.blit(veil, (0, 0))
+
+        # Panel background + bevel
+        pygame.draw.rect(surface, WIN_GRAY, r)
+        _bevel(surface, r)
+
+        # Title bar (cached per width)
+        tb = pygame.Rect(r.left + 3, r.top + 3, r.w - 6, _TB_H)
+        if self._title_surf is None or self._title_surf_w != tb.w:
+            self._title_surf = pygame.Surface((tb.w, tb.h))
+            for i in range(tb.h):
+                t = i / max(1, tb.h - 1)
+                c = (int(TITLE_A[0] + (TITLE_B[0] - TITLE_A[0]) * t),
+                     int(TITLE_A[1] + (TITLE_B[1] - TITLE_A[1]) * t),
+                     int(TITLE_A[2] + (TITLE_B[2] - TITLE_A[2]) * t))
+                pygame.draw.line(self._title_surf, c, (0, i), (tb.w - 1, i))
+            self._title_surf_w = tb.w
+        surface.blit(self._title_surf, (tb.left, tb.top))
+        ts = fnt.render(self._title, True, WIN_LIGHT)
+        surface.blit(ts, (tb.left + 5, tb.top + (tb.h - ts.get_height()) // 2))
+
+        # Body text (centred)
+        ty = r.top + _TB_H + _PAD
+        for ln in self._body_lines:
+            ls = fnt.render(ln, True, (0, 0, 0))
+            surface.blit(ls, (r.left + (r.w - ls.get_width()) // 2, ty))
+            ty += fh + 2
+
+        # OK button
+        pygame.draw.rect(surface, WIN_GRAY, self._ok_btn)
+        _bevel(surface, self._ok_btn, self._ok_press)
+        ok_s = fnt.render("OK", True, (0, 0, 0))
+        surface.blit(ok_s, (self._ok_btn.left + (self._ok_btn.w - ok_s.get_width()) // 2,
+                             self._ok_btn.top  + (self._ok_btn.h - ok_s.get_height()) // 2))
+
+
+# ---------------------------------------------------------------------------
 # CrashDialog — fatal-error reporter
 # ---------------------------------------------------------------------------
 

@@ -87,7 +87,9 @@ class EventLogPanel:
         if not self.visible:
             return False
         if ev.type == pygame.MOUSEWHEEL:
-            self._scroll = max(0, self._scroll - ev.y)
+            # scroll=0 shows newest (bottom); higher scroll reveals older entries.
+            # Wheel UP (ev.y > 0) should go toward older entries → increase scroll.
+            self._scroll = max(0, self._scroll + ev.y)
             return True
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
             if self._close_btn.inflate(8, 8).collidepoint(ev.pos):
@@ -148,6 +150,7 @@ class EventLogPanel:
         self._close_btn = pygame.Rect(
             self._rect.right - 3 - _TB_H, py + 3, _TB_H, _TB_H)
         pygame.draw.rect(surface, (180, 80, 80), self._close_btn)
+        _bevel(surface, self._close_btn)
         xs = self.font.render("x", True, WIN_LIGHT)
         surface.blit(xs, (
             self._close_btn.left + (self._close_btn.w - xs.get_width()) // 2,

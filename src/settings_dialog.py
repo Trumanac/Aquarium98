@@ -70,6 +70,7 @@ class SettingsDialog:
         self.sliders: list[_Slider] = [
             _Slider("opacity",       "Window Opacity",  0.30, 1.00, 0.05),
             _Slider("sound_volume",  "Sound Volume",    0.00, 1.00, 0.05),
+            _Slider("music_volume",  "Music Volume",    0.00, 1.00, 0.05),
             _Slider("max_bubbles",   "Max Bubbles",     1,    30,   1,   integer=True),
             _Slider("max_fish",      "Max Fish",        4,    30,   1,   integer=True),
             _Slider("castle_choice", "Castle Style",    1,    5,    1,   integer=True),
@@ -83,7 +84,9 @@ class SettingsDialog:
             _Check("pause_when_hidden","Pause When Hidden"),
             _Check("scan_lines",       "Retro Scan Lines"),
             _Check("show_names",       "Show Fish Names"),
+            _Check("show_moods",       "Show Fish Moods"),
             _Check("sound_muted",      "Mute Sounds"),
+            _Check("music_muted",      "Mute Music"),
             _Check("open_on_startup",  "Open on Startup"),
             _Check("performance_mode", "Performance Mode"),
         ]
@@ -106,6 +109,9 @@ class SettingsDialog:
         self._title_surf_w = 0
         # Rect for the clickable update-status button (positioned in draw)
         self._update_btn_rect: pygame.Rect = pygame.Rect(0, 0, 0, 0)
+        # Optional callback(key: str, value) fired immediately when a
+        # live-previewable slider (opacity/sound_volume/music_volume) changes.
+        self.on_live_change = None
 
     def open(self, cfg: dict, screen_size: tuple[int, int]) -> None:
         self.cfg_edit = dict(cfg)
@@ -255,6 +261,10 @@ class SettingsDialog:
             val = round(val / s.step) * s.step
             val = round(val, 4)
         self.cfg_edit[s.key] = val
+        if self.on_live_change is not None and s.key in (
+            "sound_volume", "music_volume", "opacity"
+        ):
+            self.on_live_change(s.key, val)
         # When difficulty changes, sync max_fish via the cap helper so that
         # Nightmare locks it to 10 and other difficulties default to 30.
         if s.key == "difficulty":

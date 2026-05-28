@@ -51,6 +51,12 @@ _SETTINGS_CFG = {
     "stat_total_fish":  22,
     "stat_peak_fish":   11,
     "coins":            317,
+    "music_volume":     0.25,
+    "music_muted":      False,
+    "music_player_visible": False,
+    "music_loop_track": False,
+    "stat_session_fish_hist":  [8, 9, 9, 10, 9, 8, 9, 10, 10, 9],
+    "stat_session_algae_hist": [12, 15, 18, 14, 11, 9, 7, 6, 8, 10],
 }
 
 

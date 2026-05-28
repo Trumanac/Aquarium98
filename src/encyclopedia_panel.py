@@ -211,6 +211,7 @@ class EncyclopediaPanel:
         # Close button
         self._close_btn = pygame.Rect(self._rect.right - 3 - _TB_H, py + 3, _TB_H, _TB_H)
         pygame.draw.rect(surface, (180, 80, 80), self._close_btn)
+        _bevel(surface, self._close_btn)
         xs = self.font.render("x", True, WIN_LIGHT)
         surface.blit(xs, (
             self._close_btn.left + (self._close_btn.w - xs.get_width()) // 2,

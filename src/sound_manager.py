@@ -62,6 +62,8 @@ class SoundManager:
         self._single_coin:   pygame.mixer.Sound | None = None
         self._achievement:   pygame.mixer.Sound | None = None
         self._chest_creak:   pygame.mixer.Sound | None = None
+        self._beatles:       pygame.mixer.Sound | None = None
+        self._nemo:          pygame.mixer.Sound | None = None
         self._bubble_pops:   list[pygame.mixer.Sound]  = []
         self._splashes:      list[pygame.mixer.Sound]  = []
         self._all_sounds:    list[pygame.mixer.Sound]  = []  # every loaded sound
@@ -83,6 +85,10 @@ class SoundManager:
         self._single_coin = _load(_AUDIO_DIR / "SingleCoin.mp3")
         self._achievement = _load(_AUDIO_DIR / "Achievement.wav")
         self._chest_creak = _load(_AUDIO_DIR / "ChestCreak.wav")
+        # Easter-egg sounds — absent files degrade gracefully to achievement sound
+        self._beatles = _load(_AUDIO_DIR / "Beatles.wav")
+        _nemo_path = _AUDIO_DIR / "nemo.mp3"
+        self._nemo = _load(_nemo_path)  # may be None if file not present
 
         for name in ("BubblePop_1.mp3", "BubblePop_2.wav", "BubblePop_3.wav"):
             s = _load(_AUDIO_DIR / name)
@@ -98,7 +104,8 @@ class SoundManager:
         self._all_sounds = [
             s for s in (
                 self._coin_chest, self._single_coin, self._achievement,
-                self._chest_creak, *self._bubble_pops, *self._splashes,
+                self._chest_creak, self._beatles, self._nemo,
+                *self._bubble_pops, *self._splashes,
             ) if s is not None
         ]
 
@@ -163,6 +170,20 @@ class SoundManager:
         """Play the chest-lid creak when the treasure chest opens."""
         if self._ok and self._chest_creak:
             self._chest_creak.play()
+
+    def play_beatles(self) -> None:
+        """Play the Beatles easter-egg fanfare (Beatles.wav)."""
+        if self._ok:
+            snd = self._beatles or self._achievement
+            if snd:
+                snd.play()
+
+    def play_nemo(self) -> None:
+        """Play the Nemo easter-egg sound (nemo.mp3 if present, else achievement)."""
+        if self._ok:
+            snd = self._nemo or self._achievement
+            if snd:
+                snd.play()
 
     def update(self) -> None:
         """Call once per frame.  Fires ambient water splashes on a random timer."""

@@ -65,6 +65,7 @@ def earn_coins(cfg: dict, amount: int, x: float, y: float,
                log_fn=None, label: str | None = None) -> None:
     """Add *amount* coins, spawn a popup at (x, y), and optionally log."""
     cfg["coins"] = int(cfg.get("coins", 0)) + amount
+    cfg["stat_coins_earned"] = int(cfg.get("stat_coins_earned", 0)) + amount
     text = f"+{amount} coin" + ("" if amount == 1 else "s")
     popups.append(CoinPopup(text, x, y))
     if log_fn is not None:
@@ -76,7 +77,7 @@ def spend_coins(cfg: dict, amount: int) -> bool:
     current = int(cfg.get("coins", 0))
     if current < amount:
         return False
-    cfg["coins"] = current - amount
+    cfg["coins"] = max(0, current - amount)
     return True
 
 

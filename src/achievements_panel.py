@@ -53,6 +53,12 @@ ACHIEVEMENTS: list[dict] = [
     {"id": "early_bird",     "name": "Early Bird",     "desc": "Open the aquarium before 7 AM."},
     {"id": "overcrowded",    "name": "Overcrowded!",   "desc": "Have 10 or more fish in the tank at once."},
     {"id": "long_haul",      "name": "Long Haul",      "desc": "Keep a fish alive for 14 days."},
+    # --- easter eggs ---
+    {"id": "konami_code",      "name": "The Code",           "desc": "Enter the Konami code. \u2191\u2191\u2193\u2193\u2190\u2192\u2190\u2192BA"},
+    {"id": "dvd_mode",         "name": "Knock Knock",        "desc": "Click the title bar 5 times within 30 seconds."},
+    {"id": "found_nemo",       "name": "Found Nemo",         "desc": "Give one of your fish the name Nemo."},
+    {"id": "were_the_beatles", "name": "Were the Beatles?",  "desc": "Have a John, a Paul, a George, and a Ringo in your tank."},
+    {"id": "empty_graveyard",  "name": "Too Soon",           "desc": "Right-click the Graveyard before any fish have died."},
 ]
 
 
@@ -298,6 +304,7 @@ class AchievementsPanel:
         self._close_btn = pygame.Rect(
             self._rect.right - 3 - _TB_H, py + 3, _TB_H, _TB_H)
         pygame.draw.rect(surface, (180, 80, 80), self._close_btn)
+        _bevel(surface, self._close_btn)
         xs = self.font.render("x", True, WIN_LIGHT)
         surface.blit(xs, (
             self._close_btn.left + (self._close_btn.w - xs.get_width()) // 2,

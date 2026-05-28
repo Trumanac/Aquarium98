@@ -99,7 +99,8 @@ TITLE_LIGHT_I   = (160, 160, 160)
 # ---------------------------------------------------------------------------
 # Layout constants (Rainmeter Variables.inc)
 # ---------------------------------------------------------------------------
-PAD_L = 48    # left chrome (toolbar)
+PAD_L = 48              # left chrome when toolbar is expanded
+PAD_L_COLLAPSED = 16    # left chrome when toolbar is collapsed (matches PAD_R)
 PAD_R = 16    # right chrome
 PAD_T = 24    # title bar
 PAD_B = 22    # status bar
@@ -114,7 +115,8 @@ TB_BTN_SIZE     = 36
 TB_BTN_SPACING  = 40
 TB_BTN_KEYS     = (
     'food', 'clean', 'roster', 'event_log',
-    'achievements', 'encyclopedia', 'graveyard', 'store', 'settings'
+    'achievements', 'encyclopedia', 'graveyard', 'store',
+    'music', 'stats', 'settings'
 )
 
 # Keyboard shortcut labels shown as tiny overlays on toolbar buttons.
@@ -128,6 +130,8 @@ TB_BTN_HOTKEYS: dict[str, str] = {
     'encyclopedia': 'E',
     'graveyard':    'G',
     'store':        'S',
+    'music':        'M',
+    'stats':        'T',
     'settings':     'Z',
 }
 
@@ -196,10 +200,13 @@ _BTN_FRAME_DEFS = [
     (2345, 153),  # 9: scroll_dn
     (2504, 98),   # 10: empty
     (2611, 251),  # 11: settings
+    (2871, 251),  # 12: music
+    (3132, 251),  # 13: stats
 ]
 _BTN_NAMES = [
     'food', 'clean', 'roster', 'event_log', 'achievements',
     'encyclopedia', 'graveyard', 'store', 'scroll_up', 'scroll_dn', 'empty', 'settings',
+    'music', 'stats',
 ]
 
 class SpriteAssets:
@@ -517,10 +524,26 @@ class FishSpriteCache:
 # Mood indicator colours — module-level constant to avoid dict allocation per fish per frame
 _MOOD_COLOURS: dict[str, tuple[int, int, int]] = {
     "happy":    (30,  200,  60),
-    "content":  (220, 200,  40),
+    "content":  (80,  200,  80),
     "stressed": (220,  60,  60),
     "hungry":   (220, 160,  20),
 }
+
+
+def _draw_mood_dot(surf: pygame.Surface, cx: int, cy: int, r: int,
+                  mood: str, col: tuple) -> None:
+    """Draw a mood indicator circle; 'happy' gets a pixel smiley face."""
+    pygame.draw.circle(surf, col, (cx, cy), r)
+    pygame.draw.circle(surf, (0, 0, 0), (cx, cy), r, 1)
+    if mood == "happy":
+        e  = max(1, r // 3)          # eye offset
+        pygame.draw.circle(surf, (0, 0, 0), (cx - e, cy - e), 1)
+        pygame.draw.circle(surf, (0, 0, 0), (cx + e, cy - e), 1)
+        sm = max(2, r // 2)          # smile half-width
+        pygame.draw.line(surf, (0, 0, 0),
+                         (cx - sm, cy + sm // 2), (cx, cy + sm), 1)
+        pygame.draw.line(surf, (0, 0, 0),
+                         (cx, cy + sm), (cx + sm, cy + sm // 2), 1)
 
 class Renderer:
     def __init__(self, surface: pygame.Surface, font: pygame.font.Font):
@@ -582,6 +605,20 @@ class Renderer:
         self.achievements_mode = False
         self.encyclopedia_mode = False
         self.graveyard_mode    = False
+        self.stats_mode        = False
+        self.settings_mode     = False
+        self.music_mode        = False
+        self.toolbar_collapsed = False  # left-panel collapse toggle
+        self._is_fullscreen    = False  # tracks toggle_fullscreen state for button icon
+
+        # Fish name label cache: fish_id → (name_str, label_surf, shadow_surf)
+        # Avoids two font.render() calls per fish per frame when show_names is on.
+        self._name_surf_cache: dict[int, tuple[str, pygame.Surface, pygame.Surface]] = {}
+
+        # Toolbar hotkey label cache: hotkey_char → (shadow_surf, label_surf)
+        # These single-character strings never change; rendering them every frame
+        # wastes ~22 font.render() calls per frame unnecessarily.
+        self._tb_hotkey_cache: dict[str, tuple[pygame.Surface, pygame.Surface]] = {}
 
         # Bubble sprite cache: (sprite_idx, size) → scaled Surface
         # Avoids smoothscale on every bubble every frame.
@@ -611,7 +648,8 @@ class Renderer:
     # -----------------------------------------------------------------------
     def compute_tank_rect(self) -> pygame.Rect:
         w, h = self.surface.get_size()
-        return pygame.Rect(PAD_L, PAD_T, w - PAD_L - PAD_R, h - PAD_T - PAD_B)
+        pad = PAD_L_COLLAPSED if self.toolbar_collapsed else PAD_L
+        return pygame.Rect(pad, PAD_T, w - pad - PAD_R, h - PAD_T - PAD_B)
 
     def tick_animations(self, dt: float) -> None:
         self._sim_t += dt
@@ -832,6 +870,7 @@ class Renderer:
              encyclopedia_seen: int = 0,
              stats: dict, sprite_cache: dict,
              status_msg: str = "",
+             now_playing: str = "",
              chest=None,
              coin_popups: list | None = None) -> None:
 
@@ -878,7 +917,13 @@ class Renderer:
         # ---- Z-8/9/10: Back-layer entities (layer 3) ----
         back  = [f for f in fish_list if f.layer == 3 and not f.is_grazing]
         mid   = [f for f in fish_list if f.layer == 2 and not f.is_grazing]
-        front = [f for f in fish_list if f.layer == 1 and not f.is_grazing]
+        # Floor-dwelling layer-1 fish (bottom/crawler) are drawn at Z-14.5,
+        # *before* the castle and chest, so they pass behind those decorations.
+        # Regular layer-1 swimmers are drawn at Z-17+ as usual.
+        front_floor = [f for f in fish_list if f.layer == 1 and not f.is_grazing
+                       and (f.sp.get("bottom") or f.sp.get("crawler") or f.sp.get("frog"))]
+        front_swim  = [f for f in fish_list if f.layer == 1 and not f.is_grazing
+                       and not (f.sp.get("bottom") or f.sp.get("crawler") or f.sp.get("frog"))]
 
         for f in back:
             self._draw_fish(f, tr, show_names, show_moods)
@@ -920,6 +965,12 @@ class Renderer:
         self._draw_bubbles_layer(env.bubbles, 2, tr)
         self._draw_food_layer(env.food, 2, tr)
 
+        # ---- Z-14.5: Floor-dwelling layer-1 fish (behind castle & chest) ----
+        # Crawdads, catfish, algae eaters etc. live on the sand, so they should
+        # appear behind decorations that sit on the floor (castle, chest).
+        for f in front_floor:
+            self._draw_fish(f, tr, show_names, show_moods)
+
         # ---- Z-15: Castle ----
         if self._castle_scaled:
             s.blit(self._castle_scaled, self._castle_pos)
@@ -938,9 +989,9 @@ class Renderer:
             py = tr.bottom - _ph - int(6 * _pry)   # bottom of plant ≈ sand floor
             s.blit(plant_s, (px, py))
 
-        # ---- Z-17/18/19: Front-layer entities (layer 1) ----
+        # ---- Z-17/18/19: Front-layer entities (layer 1, swimming fish) ----
         self._draw_food_layer(env.food, 1, tr)
-        for f in front:
+        for f in front_swim:
             self._draw_fish(f, tr, show_names, show_moods)
         self._draw_bubbles_layer(env.bubbles, 1, tr)
 
@@ -1000,7 +1051,7 @@ class Renderer:
         self._draw_toolbar(encyclopedia_seen)
 
         # ---- Z-24: Status bar ----
-        self._draw_status_bar(paused, locked, stats, status_msg)
+        self._draw_status_bar(paused, locked, stats, status_msg, now_playing)
 
         # ---- Resize grab handle ----
         if not locked:
@@ -1119,12 +1170,35 @@ class Renderer:
         sw, sh = spr.get_size()
         sx = tr.left + int(f.x) - sw // 2
         sy = tr.top  + int(f.y) - sh // 2
-        self.surface.blit(spr, (sx, sy))
+
+        # Hard floor clip: floor-dwelling species must not visually overflow
+        # past the tank floor line, regardless of their y position.
+        is_floor_dweller = (f.sp.get("bottom") or f.sp.get("crawler") or f.sp.get("frog"))
+        if is_floor_dweller:
+            clip_h = tr.bottom - sy
+            if clip_h <= 0:
+                return
+            if clip_h < sh:
+                self.surface.blit(spr, (sx, sy), pygame.Rect(0, 0, sw, clip_h))
+            else:
+                self.surface.blit(spr, (sx, sy))
+        else:
+            self.surface.blit(spr, (sx, sy))
 
         if show_names:
-            label = self.font.render(f.name, True, (180, 220, 255))
-            self.surface.blit(label, (sx + sw // 2 - label.get_width() // 2,
-                                      sy - label.get_height() - 1))
+            fid = id(f)
+            cached = self._name_surf_cache.get(fid)
+            if cached is None or cached[0] != f.name:
+                label  = self.font.render(f.name, True, (180, 220, 255))
+                shadow = self.font.render(f.name, True, (0, 0, 0))
+                shadow.set_alpha(160)
+                self._name_surf_cache[fid] = (f.name, label, shadow)
+            else:
+                _, label, shadow = cached
+            lx = sx + sw // 2 - label.get_width() // 2
+            ly = sy - label.get_height() - 1
+            self.surface.blit(shadow, (lx + 1, ly + 1))
+            self.surface.blit(label,  (lx, ly))
 
         if show_moods:
             mood     = getattr(f, "mood", "content")
@@ -1133,13 +1207,12 @@ class Renderer:
                 # Sit the dot to the right of the name, vertically centred with it
                 name_w = self.font.size(f.name)[0]
                 name_h = self.font.get_height()
-                dot_x = sx + sw // 2 + name_w // 2 + 7
+                dot_x = sx + sw // 2 + name_w // 2 + 9
                 dot_y = sy - name_h // 2 - 1
             else:
                 dot_x = sx + sw // 2
-                dot_y = sy - 6
-            pygame.draw.circle(self.surface, mood_col, (dot_x, dot_y), 4)
-            pygame.draw.circle(self.surface, (0, 0, 0),   (dot_x, dot_y), 4, 1)
+                dot_y = sy - 8
+            _draw_mood_dot(self.surface, dot_x, dot_y, 6, mood, mood_col)
 
     # -----------------------------------------------------------------------
     # Chrome drawing
@@ -1168,9 +1241,20 @@ class Renderer:
         # Title separator line at bottom of title gradient
         pygame.draw.line(self.surface, WIN_DARK, (1, tb.bottom), (w - 2, tb.bottom))
 
-        # "Aquarium 98" left-aligned
+        # Toolbar collapse/expand toggle button (< or >), left of title text
+        tbtn = pygame.Rect(3, 4, 14, 16)
+        pygame.draw.rect(self.surface, WIN_GRAY, tbtn)
+        _bevel_rect_surf(self.surface, tbtn)
+        arrow_ch = ">" if self.toolbar_collapsed else "<"
+        if self._key_font is not None:
+            arrow_surf = self._key_font.render(arrow_ch, True, (0, 0, 0))
+            self.surface.blit(arrow_surf,
+                              (tbtn.left + (tbtn.w - arrow_surf.get_width()) // 2,
+                               tbtn.top  + (tbtn.h - arrow_surf.get_height()) // 2))
+
+        # "Aquarium 98" left-aligned (shifted right to clear the toggle button)
         title = self.font.render("Aquarium 98", True, (255, 255, 255))
-        self.surface.blit(title, (8, tb.top + (tb.h - title.get_height()) // 2))
+        self.surface.blit(title, (22, tb.top + (tb.h - title.get_height()) // 2))
 
         # Win98-style close button (top-right, red with white X)
         btn = pygame.Rect(w - 21, 4, 18, 16)
@@ -1181,6 +1265,27 @@ class Renderer:
                          (btn.left + 4, btn.top + 3),  (btn.right - 5, btn.bottom - 4), 2)
         pygame.draw.line(self.surface, (255, 255, 255),
                          (btn.right - 5, btn.top + 3), (btn.left + 4,  btn.bottom - 4), 2)
+
+        # Fullscreen/restore button (□ or overlapping squares) — second from right
+        fbtn = pygame.Rect(w - 40, 4, 18, 16)
+        pygame.draw.rect(self.surface, WIN_GRAY, fbtn)
+        _bevel_rect_surf(self.surface, fbtn)
+        if self._is_fullscreen:
+            # Restore icon: two overlapping squares
+            pygame.draw.rect(self.surface, (0, 0, 0), (fbtn.left + 6, fbtn.top + 3, 7, 6), 1)
+            pygame.draw.rect(self.surface, WIN_GRAY,  (fbtn.left + 4, fbtn.top + 5, 7, 6))
+            pygame.draw.rect(self.surface, (0, 0, 0), (fbtn.left + 4, fbtn.top + 5, 7, 6), 1)
+        else:
+            # Maximize icon: single square outline
+            pygame.draw.rect(self.surface, (0, 0, 0), (fbtn.left + 4, fbtn.top + 3, 9, 8), 1)
+
+        # Minimize button (−) — third from right
+        mbtn = pygame.Rect(w - 59, 4, 18, 16)
+        pygame.draw.rect(self.surface, WIN_GRAY, mbtn)
+        _bevel_rect_surf(self.surface, mbtn)
+        pygame.draw.line(self.surface, (0, 0, 0),
+                         (mbtn.left + 4, mbtn.centery + 2),
+                         (mbtn.right - 5, mbtn.centery + 2), 2)
 
         # Right-aligned stats: "Fish: N   Algae: N%   [coin] N"  (shifted left to clear the X button)
         stats_str  = f"Fish: {fish_count}   Algae: {algae_pct}%"
@@ -1195,12 +1300,12 @@ class Renderer:
         coins_surf = self.font.render(coins_str, True, (255, 230, 80))
         stats_surf.set_alpha(220)
         coins_surf.set_alpha(220)
-        # Lay out right-to-left starting LEFT of the close button
-        coin_count_x = btn.left - 6 - coins_surf.get_width()
+        # Lay out right-to-left starting LEFT of the minimize button
+        coin_count_x = mbtn.left - 6 - coins_surf.get_width()
         icon_x = coin_count_x - 12
         stats_x = icon_x - 4 - stats_surf.get_width()
         # Prevent stats overlapping "Aquarium 98" title on narrow windows
-        stats_x = max(8 + title.get_width() + 8, stats_x)
+        stats_x = max(22 + title.get_width() + 8, stats_x)
         ty = tb.top + (tb.h - stats_surf.get_height()) // 2
         self.surface.blit(stats_surf,  (stats_x, ty))
         # Coin icon: small gold circle (drawn, not from sprite)
@@ -1220,7 +1325,7 @@ class Renderer:
         pygame.draw.rect(s, WIN_DARK,  (tr.left - 1, tr.top - 1, tr.w + 2, tr.h + 2), 1)
 
     def _draw_tb_btn(self, key: str, x: int, y: int, pressed: bool = False) -> None:
-        """Blit a toolbar icon from btn_icons; draw a blue highlight border when pressed."""
+        """Blit a toolbar icon from btn_icons; darken with a semi-transparent overlay when pressed."""
         icon = self.assets.btn_icons.get(key)
         if icon:
             self.surface.blit(icon, (x, y))
@@ -1229,26 +1334,40 @@ class Renderer:
             pygame.draw.rect(self.surface, WIN_GRAY, (x, y, 36, 36))
             _bevel_rect_surf(self.surface, pygame.Rect(x, y, 36, 36), pressed=pressed)
         if pressed:
-            pygame.draw.rect(self.surface, (0, 80, 200), (x, y, 36, 36), 2)
+            # Semi-transparent dark overlay (same as music button press effect)
+            if not hasattr(self, '_tb_press_overlay') or self._tb_press_overlay is None:
+                self._tb_press_overlay = pygame.Surface((36, 36), pygame.SRCALPHA)
+                self._tb_press_overlay.fill((0, 0, 0, 80))
+            self.surface.blit(self._tb_press_overlay, (x, y))
 
     def _draw_toolbar(self, encyclopedia_seen: int = 0) -> None:
         # 36×36 icons, centred in the 48 px left chrome (x=6), spaced by 40 px vertically
+        if self.toolbar_collapsed:
+            return  # toolbar is hidden; toggle button in the title bar expands it
+        _h = self.surface.get_height()
         for idx, key in enumerate(TB_BTN_KEYS):
             y = TB_BTN_Y_START + idx * TB_BTN_SPACING
+            if y + TB_BTN_SIZE > _h - PAD_B:   # would overlap status bar or be off-screen
+                break
             pressed = getattr(self, f"{key}_mode", False)
             self._draw_tb_btn(key, TB_BTN_X, y, pressed=pressed)
             # Hotkey letter overlay — bottom-left corner of the button
             hotkey = TB_BTN_HOTKEYS.get(key)
             if hotkey and self._key_font is not None:
-                ks_shadow = self._key_font.render(hotkey, True, (10, 10, 10))
-                ks_label  = self._key_font.render(hotkey, True, (255, 255, 255))
+                cached_hk = self._tb_hotkey_cache.get(hotkey)
+                if cached_hk is None:
+                    ks_shadow = self._key_font.render(hotkey, True, (10, 10, 10))
+                    ks_label  = self._key_font.render(hotkey, True, (255, 255, 255))
+                    self._tb_hotkey_cache[hotkey] = (ks_shadow, ks_label)
+                else:
+                    ks_shadow, ks_label = cached_hk
                 kx = TB_BTN_X + 2
                 ky = y + TB_BTN_SIZE - ks_label.get_height() - 1
                 self.surface.blit(ks_shadow, (kx + 1, ky + 1))
                 self.surface.blit(ks_label,  (kx, ky))
 
     def _draw_status_bar(self, paused: bool, locked: bool, stats: dict,
-                         status_msg: str = "") -> None:
+                         status_msg: str = "", now_playing: str = "") -> None:
         w, h = self.surface.get_size()
         bar = pygame.Rect(0, h - PAD_B, w, PAD_B)
         pygame.draw.rect(self.surface, WIN_GRAY, bar)
@@ -1271,6 +1390,9 @@ class Renderer:
                 text = f"{fish_n} fish swimming — {algae_pct}% algae  [{fps:.0f} fps]"
             else:
                 text = f"{fish_n} fish swimming — {algae_pct}% algae"
+
+        if now_playing:
+            text = f"{text}  |  {now_playing}"
 
         surf = self.font.render(text, True, (0, 0, 0))
         self.surface.blit(surf, (6, bar.top + (PAD_B - surf.get_height()) // 2))
