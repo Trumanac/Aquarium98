@@ -20,7 +20,7 @@ PANEL_BG  = (240, 240, 240)
 
 _TB_H = 18
 _PAD  = 4
-PW    = 260
+PW    = 300
 PH    = 220   # initial height; adjusts to tank
 
 MAX_ENTRIES = 200
@@ -39,7 +39,7 @@ _CAT_COLORS = {
 def log_event(cfg: dict, message: str, category: str = "info") -> None:
     """Append a timestamped event to cfg["event_log"]."""
     log: list[dict] = cfg.get("event_log") or []
-    ts = datetime.datetime.now().strftime("%H:%M")
+    ts = datetime.datetime.now().strftime("%m/%d %H:%M")
     log.append({"t": ts, "m": message, "c": category})
     if len(log) > MAX_ENTRIES:
         log = log[-MAX_ENTRIES:]

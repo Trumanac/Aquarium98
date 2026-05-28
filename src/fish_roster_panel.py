@@ -205,12 +205,13 @@ class FishRosterPanel:
         sort_lbl = self._SORT_LABELS[self._sort_mode]
         slbl_surf = self.font.render(sort_lbl, True, (220, 220, 80))
         sort_btn_w = slbl_surf.get_width() + 6
+        sort_btn_h = header_h - 4
         self._sort_btn = pygame.Rect(hbar.right - 20 - 2 - sort_btn_w,
-                                     hbar.top + 3, sort_btn_w, 14)
+                                     hbar.top + 2, sort_btn_w, sort_btn_h)
         pygame.draw.rect(surface, (30, 70, 150), self._sort_btn)
         pygame.draw.rect(surface, (80, 120, 200), self._sort_btn, 1)
         surface.blit(slbl_surf, (self._sort_btn.left + 3,
-                                  self._sort_btn.top + (14 - slbl_surf.get_height()) // 2))
+                                  self._sort_btn.top + (sort_btn_h - slbl_surf.get_height()) // 2))
 
         # Rows
         self._rows = []

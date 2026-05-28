@@ -1398,6 +1398,18 @@ def main() -> int:
                                             mx2, my2, mw, mh = win_mod.get_monitor_rect_for_window(sdl_win)
                                             sdl_win.position = (mx2, my2)
                                             sdl_win.size = (mw, mh)
+                                            surface = win_mod.resize_surface(mw, mh, clamp=False)
+                                            sdl_win = win_mod.get_sdl_window()
+                                            renderer.surface = surface
+                                            renderer._static_bg = None
+                                            _old_tw, _old_th = env.tank_w, env.tank_h
+                                            tr = renderer.compute_tank_rect()
+                                            rescale_environment(env, _old_tw, _old_th, tr.w, tr.h)
+                                            for _rf in fish_list:
+                                                _rf.x = max(0.0, min(float(tr.w), _rf.x * tr.w / max(1, _old_tw)))
+                                                _rf.y = max(0.0, min(float(tr.h), _rf.y * tr.h / max(1, _old_th)))
+                                            env.tank_w = tr.w
+                                            env.tank_h = tr.h
                                         except Exception as _e:
                                             log.debug("windowed-fs enter: %s", _e)
                                 else:
@@ -1410,6 +1422,18 @@ def main() -> int:
                                         try:
                                             sdl_win.size = (pw, ph)
                                             sdl_win.position = (px, py)
+                                            surface = win_mod.resize_surface(pw, ph, clamp=True)
+                                            sdl_win = win_mod.get_sdl_window()
+                                            renderer.surface = surface
+                                            renderer._static_bg = None
+                                            _old_tw, _old_th = env.tank_w, env.tank_h
+                                            tr = renderer.compute_tank_rect()
+                                            rescale_environment(env, _old_tw, _old_th, tr.w, tr.h)
+                                            for _rf in fish_list:
+                                                _rf.x = max(0.0, min(float(tr.w), _rf.x * tr.w / max(1, _old_tw)))
+                                                _rf.y = max(0.0, min(float(tr.h), _rf.y * tr.h / max(1, _old_th)))
+                                            env.tank_w = tr.w
+                                            env.tank_h = tr.h
                                         except Exception as _e:
                                             log.debug("windowed-fs exit: %s", _e)
                             elif win_mod.in_toolbar_toggle_btn(mx, my, *_sz):

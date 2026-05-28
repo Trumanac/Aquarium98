@@ -131,6 +131,69 @@ class StatsPanel:
         return False
 
     # ------------------------------------------------------------------
+    def _draw_chart(
+        self,
+        surface: pygame.Surface,
+        cfg: dict,
+        chart_left: int,
+        chart_top: int,
+        chart_w: int,
+        chart_h: int,
+        fish_hist: list,
+        algae_hist: list,
+        coins_hist: list,
+    ) -> int:
+        """Draw the session history chart and legend. Returns Y below legend."""
+        graph_rect = pygame.Rect(chart_left, chart_top, chart_w, chart_h)
+        pygame.draw.rect(surface, (210, 210, 210), graph_rect)
+        pygame.draw.line(surface, WIN_DARK,
+                         graph_rect.topleft, (graph_rect.right - 1, graph_rect.top))
+        pygame.draw.line(surface, WIN_DARK,
+                         graph_rect.topleft, (graph_rect.left, graph_rect.bottom - 1))
+        pygame.draw.line(surface, WIN_LIGHT,
+                         (graph_rect.right - 1, graph_rect.top),
+                         (graph_rect.right - 1, graph_rect.bottom - 1))
+        pygame.draw.line(surface, WIN_LIGHT,
+                         (graph_rect.left, graph_rect.bottom - 1),
+                         (graph_rect.right - 1, graph_rect.bottom - 1))
+
+        gx = graph_rect.left + 2
+        gy = graph_rect.top  + 2
+        gw = graph_rect.w - 4
+        gh = graph_rect.h - 4
+        max_fish_cfg = max(int(cfg.get("max_fish", 25)), 1)
+
+        if len(fish_hist) >= 2:
+            n = len(fish_hist)
+            pts = [(gx + int(i / max(1, n - 1) * gw),
+                    gy + gh - int(min(v, max_fish_cfg) / max_fish_cfg * gh))
+                   for i, v in enumerate(fish_hist)]
+            pygame.draw.lines(surface, _LINE_FISH, False, pts, 1)
+        if len(algae_hist) >= 2:
+            n = len(algae_hist)
+            pts = [(gx + int(i / max(1, n - 1) * gw),
+                    gy + gh - int(min(v, 100) / 100 * gh))
+                   for i, v in enumerate(algae_hist)]
+            pygame.draw.lines(surface, _LINE_ALGAE, False, pts, 1)
+        if len(coins_hist) >= 2:
+            max_c = max(max(coins_hist), 1)
+            n = len(coins_hist)
+            pts = [(gx + int(i / max(1, n - 1) * gw),
+                    gy + gh - int(min(v, max_c) / max_c * gh))
+                   for i, v in enumerate(coins_hist)]
+            pygame.draw.lines(surface, _LINE_COINS, False, pts, 1)
+
+        lx  = graph_rect.left + 4
+        ly  = graph_rect.bottom + 3
+        fh  = self.font.get_height()
+        for col, label in ((_LINE_FISH, "Fish"), (_LINE_ALGAE, "Algae%"), (_LINE_COINS, "Coins")):
+            pygame.draw.line(surface, col, (lx, ly + 4), (lx + 8, ly + 4), 1)
+            ls = self.font.render(label, True, (40, 40, 60))
+            surface.blit(ls, (lx + 10, ly))
+            lx += 10 + ls.get_width() + 10
+        return ly + fh
+
+    # ------------------------------------------------------------------
     def draw(self, surface: pygame.Surface, cfg: dict) -> None:
         if not self.visible:
             return
@@ -188,79 +251,43 @@ class StatsPanel:
         # ── Content area starts below the tab bar ─────────────────────
         content_top = tab_y + _TAB_H + _PAD
 
+        fish_hist  = cfg.get("stat_session_fish_hist")  or []
+        algae_hist = cfg.get("stat_session_algae_hist") or []
+        coins_hist = cfg.get("stat_session_coins_hist") or []
+        chart_left = px + _PAD
+        chart_w    = PW - _PAD * 2
+        chart_h    = 58
+        fh         = self.font.get_height()
+        col_val_x  = px + PW - _PAD - 60
+
+        ly = self._draw_chart(surface, cfg, chart_left, content_top,
+                              chart_w, chart_h, fish_hist, algae_hist, coins_hist)
+        pygame.draw.line(surface, WIN_DARK,
+                         (px + _PAD, ly + 3), (px + PW - _PAD - 1, ly + 3))
+        sy = ly + 6
+
         if self._tab == 0:
-            # ── Session history charts ─────────────────────────────────
-            fish_hist  = cfg.get("stat_session_fish_hist")  or []
-            algae_hist = cfg.get("stat_session_algae_hist") or []
-            coins_hist = cfg.get("stat_session_coins_hist") or []
-
-            chart_top  = content_top
-            chart_left = px + _PAD
-            chart_w    = PW - _PAD * 2
-            chart_h    = 80
-
-            graph_rect = pygame.Rect(chart_left, chart_top, chart_w, chart_h)
-
-            # Sunken chart background
-            pygame.draw.rect(surface, (210, 210, 210), graph_rect)
-            pygame.draw.line(surface, WIN_DARK,
-                             graph_rect.topleft, (graph_rect.right - 1, graph_rect.top))
-            pygame.draw.line(surface, WIN_DARK,
-                             graph_rect.topleft, (graph_rect.left, graph_rect.bottom - 1))
-            pygame.draw.line(surface, WIN_LIGHT,
-                             (graph_rect.right - 1, graph_rect.top),
-                             (graph_rect.right - 1, graph_rect.bottom - 1))
-            pygame.draw.line(surface, WIN_LIGHT,
-                             (graph_rect.left, graph_rect.bottom - 1),
-                             (graph_rect.right - 1, graph_rect.bottom - 1))
-
-            gx = graph_rect.left + 2
-            gy = graph_rect.top  + 2
-            gw = graph_rect.w - 4
-            gh = graph_rect.h - 4
-
+            # ── Session: current snapshot stats below the chart ────────
             max_fish_cfg = max(int(cfg.get("max_fish", 25)), 1)
-
-            # Fish line (blue) — normalised to max_fish
-            if len(fish_hist) >= 2:
-                n = len(fish_hist)
-                pts = [(gx + int(i / max(1, n - 1) * gw),
-                        gy + gh - int(min(v, max_fish_cfg) / max_fish_cfg * gh))
-                       for i, v in enumerate(fish_hist)]
-                pygame.draw.lines(surface, _LINE_FISH, False, pts, 1)
-
-            # Algae line (green) — normalised to 100 %
-            if len(algae_hist) >= 2:
-                n = len(algae_hist)
-                pts = [(gx + int(i / max(1, n - 1) * gw),
-                        gy + gh - int(min(v, 100) / 100 * gh))
-                       for i, v in enumerate(algae_hist)]
-                pygame.draw.lines(surface, _LINE_ALGAE, False, pts, 1)
-
-            # Coins line (gold) — normalised to max observed (or 1)
-            if len(coins_hist) >= 2:
-                max_c = max(max(coins_hist), 1)
-                n = len(coins_hist)
-                pts = [(gx + int(i / max(1, n - 1) * gw),
-                        gy + gh - int(min(v, max_c) / max_c * gh))
-                       for i, v in enumerate(coins_hist)]
-                pygame.draw.lines(surface, _LINE_COINS, False, pts, 1)
-
-            # Legend
-            lx = graph_rect.left + 4
-            ly = graph_rect.bottom + 3
-            for col, label in ((_LINE_FISH, "Fish"),
-                               (_LINE_ALGAE, "Algae%"),
-                               (_LINE_COINS, "Coins")):
-                pygame.draw.line(surface, col, (lx, ly + 4), (lx + 8, ly + 4), 1)
-                ls = self.font.render(label, True, (40, 40, 60))
-                surface.blit(ls, (lx + 10, ly))
-                lx += 10 + ls.get_width() + 10
+            cur_fish  = fish_hist[-1]  if fish_hist  else 0
+            cur_algae = algae_hist[-1] if algae_hist else 0
+            cur_coins = cfg.get("coins", 0)
+            session_stats = [
+                ("Fish in tank", f"{cur_fish} / {max_fish_cfg}"),
+                ("Algae",        f"{cur_algae:.0f}%"),
+                ("Coins",        str(int(cur_coins))),
+            ]
+            for label, value in session_stats:
+                if sy + fh > py + PH - _PAD:
+                    break
+                lbl_s = self.font.render(label + ":", True, (0, 0, 0))
+                val_s = self.font.render(value,         True, (0, 0, 100))
+                surface.blit(lbl_s, (px + _PAD + 4, sy))
+                surface.blit(val_s, (col_val_x, sy))
+                sy += fh + 2
 
         else:
-            # ── All-Time lifetime stats ───────────────────────────────
-            fh = self.font.get_height()
-            sy = content_top
+            # ── All-Time: lifetime stats below the chart ──────────────
             stats_lines = [
                 ("Total days survived",   f"{float(cfg.get('stat_total_days', 0)):.1f}"),
                 ("Fish ever added",       str(int(cfg.get("stat_total_fish",   0)))),
@@ -270,12 +297,11 @@ class StatsPanel:
                 ("Coins earned (total)",  str(int(cfg.get("stat_coins_earned", 0)))),
                 ("Fish bred in tank",     str(int(cfg.get("stat_bred_fish",    0)))),
             ]
-            col_val_x = px + PW - _PAD - 60
             for label, value in stats_lines:
                 if sy + fh > py + PH - _PAD:
                     break
                 lbl_s = self.font.render(label + ":", True, (0, 0, 0))
-                val_s = self.font.render(value,        True, (0, 0, 100))
+                val_s = self.font.render(value,         True, (0, 0, 100))
                 surface.blit(lbl_s, (px + _PAD + 4, sy))
                 surface.blit(val_s, (col_val_x, sy))
                 sy += fh + 2

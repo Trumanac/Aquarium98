@@ -142,6 +142,9 @@ _REF_H = 274
 CASTLE_IX = 142    # interior X of castle left edge
 CASTLE_W  = 116    # at reference resolution
 CASTLE_H  = 94     # at reference resolution
+# Visible-bottom fraction per decor skin (alpha-scanned; transparent rows fill the PNG bottom).
+# Index matches castle_choice-1 (0=castle_new, 1=castle_new3, 2=Castle2, 3=Ship, 4=Castle3).
+_CASTLE_VIS_BOT_FRACS = [0.82, 0.82, 0.88, 0.91, 0.92]
 
 PLANT_IX  = 278    # interior X of plant left edge
 PLANT_OY  = 90     # plant bottom is 90 px above interior floor
@@ -576,6 +579,8 @@ class Renderer:
         self._castle_scaled:  pygame.Surface | None = None
         # Castle exact screen position (recalculated on resize)
         self._castle_pos: tuple[int, int] = (0, 0)
+        # Tank-Y at or below which floor fish render IN FRONT of the castle (sand zone)
+        self._castle_sand_y: int = 0
         # Per-size animation/overlay caches (populated by _rebuild_decor)
         self._surface_ripples_scaled: list[pygame.Surface] = []
         self._caustics_scaled:        list[pygame.Surface] = []
@@ -726,10 +731,15 @@ class Renderer:
                 ch = max(6, int(CASTLE_H * ry))
                 self._castle_scaled = pygame.transform.smoothscale(castle_tex, (cw, ch))
 
-        # Castle position: left edge at interior X = 142, bottom at interior floor
+        # Castle position: left edge at interior X = 142, visible bottom at interior floor
         cx = tr.left + max(0, int(CASTLE_IX * rx))
-        cy = tr.bottom - max(1, int(CASTLE_H * ry))
+        _cidx  = max(0, min(4, self.castle_choice - 1))
+        _vis_f = _CASTLE_VIS_BOT_FRACS[_cidx]
+        _ch_ref = max(1, int(CASTLE_H * ry))
+        cy = tr.bottom - max(1, int(_ch_ref * _vis_f))
         self._castle_pos = (cx, cy)
+        # Sand zone threshold: fish at or below this tank-Y draw in front of the castle
+        self._castle_sand_y = int(tr.h - _ch_ref * _vis_f * 0.35)
 
         # ── Pre-scale animated frames and static overlays to tank size ────────
         sr_h = max(1, int(WATER_SURFACE_H * h / _REF_H))
@@ -965,11 +975,12 @@ class Renderer:
         self._draw_bubbles_layer(env.bubbles, 2, tr)
         self._draw_food_layer(env.food, 2, tr)
 
-        # ---- Z-14.5: Floor-dwelling layer-1 fish (behind castle & chest) ----
-        # Crawdads, catfish, algae eaters etc. live on the sand, so they should
-        # appear behind decorations that sit on the floor (castle, chest).
+        # ---- Z-14.5: Floor fish above the castle sand zone (behind castle & chest) ----
+        # Crawdads, catfish, algae eaters etc. behind the castle walls.
+        _sand_y = self._castle_sand_y
         for f in front_floor:
-            self._draw_fish(f, tr, show_names, show_moods)
+            if f.y < _sand_y:
+                self._draw_fish(f, tr, show_names, show_moods)
 
         # ---- Z-15: Castle ----
         if self._castle_scaled:
@@ -978,6 +989,11 @@ class Renderer:
         # ---- Z-15.5: Treasure Chest (between castle and plant) ----
         if chest is not None:
             chest.draw(s, tr, self.assets.chest_sheet)
+
+        # ---- Z-15.7: Floor fish at sand level (in front of castle & chest) ----
+        for f in front_floor:
+            if f.y >= _sand_y:
+                self._draw_fish(f, tr, show_names, show_moods)
 
         # ---- Z-16: PlantRight (animated, rooted in sand) ----
         if self._plant_frames_scaled:
