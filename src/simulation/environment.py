@@ -2,7 +2,7 @@
 environment.py — bubbles, food flakes, algae growth, day/night cycle.
 
 Follows FishPOC.lua (active Rainmeter path):
-  - 6 fixed bubble objects, never added/removed; reset on reaching surface.
+  - Bubble pool is dynamic: starts at 6 and grows/shrinks to match cfg["max_bubbles"].
   - 30 fixed food slots (10 back + 10 mid + 10 front), layer-fixed.
   - Algae 0–100 percentage scale; density-based growth; 8% removed per scrub.
   - Day/night: 20-minute full cycle (modular path feature).
@@ -169,16 +169,16 @@ def rescale_environment(env: "Environment",
 # Food spawning
 # ---------------------------------------------------------------------------
 
-_FOOD_HARD_CAP = 90  # never exceed 3× the nominal 30-slot pool
+_FOOD_HARD_CAP = 400  # large pool; active count is gated by max_food per difficulty
 
 def spawn_food_at(env: Environment, ix: float, iy: float,
                   count: int | None = None,
                   max_active: int = _FOOD_HARD_CAP) -> int:
     """Drop 3–5 food flakes centred on interior coords (ix, iy).
 
-    First pass fills a random preferred layer; second fills any free slot.
-    If all existing food slots are active, create extra slots so clicks never
-    fail due to a hard food cap.
+    Preferred-layer slots are filled first; remaining count is drawn from
+    any other free slot.  If the pool is exhausted, extra slots are created
+    up to _FOOD_HARD_CAP so clicks never silently fail.
     Returns number of flakes actually spawned.
     """
     if count is None:
@@ -190,12 +190,23 @@ def spawn_food_at(env: Environment, ix: float, iy: float,
         return 0
     target_layer = random.randint(1, 3)
     spawned = 0
+    # Single pass: prefer target_layer first, then accept any free slot.
+    # Two-element tuple (layer_match, slot) let us fill preferred layer
+    # slots first without iterating env.food twice.
+    fallback: list = []
     for food in env.food:
-        if not food.active and food.layer == target_layer and spawned < count:
-            _init_food(food, ix, iy)
-            spawned += 1
-    for food in env.food:
-        if not food.active and spawned < count:
+        if spawned >= count:
+            break
+        if not food.active:
+            if food.layer == target_layer:
+                _init_food(food, ix, iy)
+                spawned += 1
+            else:
+                fallback.append(food)
+    for food in fallback:
+        if spawned >= count:
+            break
+        if not food.active:   # re-check: another loop may have activated it
             _init_food(food, ix, iy)
             spawned += 1
     while spawned < count and len(env.food) < _FOOD_HARD_CAP:
@@ -267,14 +278,39 @@ def spawn_chest_burst(env: Environment, burst_positions: list[tuple[float, float
 def update_environment(env: Environment, dt: float, cfg: dict,
                        fish_count: int = 0,
                        algae_eater_count: int = 0) -> None:
-    # ---- Bubbles (6 fixed objects) ----
-    for b in env.bubbles:
+    # ---- Bubbles: pool size tracks cfg["max_bubbles"] (default 6 on first frame) ----
+    target_count = max(1, min(30, int(cfg.get("max_bubbles", 6))))
+    i = 0
+    while i < len(env.bubbles):
+        b = env.bubbles[i]
         b.sway += dt * b.sway_spd
         b.y += b.vy * dt                       # vy is negative → rises
         b.x += math.sin(b.sway) * 0.9
         b.x = max(4.0, min(float(env.tank_w - 4), b.x))
         if b.y < 4.0:
-            _reset_bubble(b, env.tank_w, env.tank_h)
+            if len(env.bubbles) > target_count:
+                # Trim excess: remove this bubble instead of resetting it
+                env.bubbles.pop(i)
+                continue
+            else:
+                _reset_bubble(b, env.tank_w, env.tank_h)
+        i += 1
+    # Grow pool to meet target (e.g. user raised Max Bubbles slider)
+    while len(env.bubbles) < target_count:
+        idx = len(env.bubbles)
+        b = Bubble(
+            x=float(random.randint(14, max(15, env.tank_w - 14))),
+            y=0.0,
+            vy=0.0,
+            sway=random.randint(0, 628) / 100.0,
+            sway_spd=1.2 + random.randint(0, 22) / 10.0,
+            base_size=_BUBBLE_BASE_SIZES[idx % len(_BUBBLE_BASE_SIZES)],
+            layer=_BUBBLE_INIT_LAYERS[idx % len(_BUBBLE_INIT_LAYERS)],
+            sprite_idx=random.randint(0, 2),
+        )
+        _reset_bubble(b, env.tank_w, env.tank_h)
+        b.y = random.uniform(env.tank_h * 0.05, env.tank_h * 0.90)
+        env.bubbles.append(b)
 
     # ---- Food (fixed slots) ----
     for food in env.food:

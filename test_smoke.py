@@ -127,6 +127,7 @@ def test_volume_clamps_correctly():
 
 def test_mute_sets_effective_volume_to_zero():
     """When muted, every Sound's channel volume should be 0.0."""
+    from src.sound_manager import _CHEST_CREAK_REL
     snd = _make_sound_manager()
 
     snd.set_volume(0.7)
@@ -141,7 +142,9 @@ def test_mute_sets_effective_volume_to_zero():
     snd.set_muted(False)
     for s in snd._all_sounds:
         v = s.get_volume()
-        assert abs(v - 0.7) < 0.01, f"Expected ~0.7 after unmute, got {v}"
+        # Chest creak is intentionally mixed at a lower relative level
+        expected = 0.7 * _CHEST_CREAK_REL if s is snd._chest_creak else 0.7
+        assert abs(v - expected) < 0.02, f"Expected ~{expected:.3f} after unmute, got {v}"
 
     print("       OK — mute/unmute adjusts all Sound volumes correctly")
 

@@ -13,6 +13,7 @@ Pipeline:
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import atexit
 import logging
@@ -30,7 +31,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.12"
+    APP_VERSION = "1.0.13"
 
 import pygame
 
@@ -204,7 +205,7 @@ def _show_already_running_error() -> None:
         print(f"\n{title}\n{msg}", file=sys.stderr)
 
 
-def main() -> int:
+async def main() -> int:
     _setup_logging()
     log = logging.getLogger("aquarium")
 
@@ -260,7 +261,10 @@ def main() -> int:
         # Show startup splash before the main game window is created
         pygame.mixer.pre_init(44100, -16, 2, 512)
         pygame.display.init()
-        pygame.mixer.init()
+        try:
+            pygame.mixer.init()
+        except Exception:  # noqa: BLE001 — audio unavailable; SoundManager degrades gracefully
+            pass
         pygame.font.init()
         show_splash()
 
@@ -369,6 +373,7 @@ def main() -> int:
                 fish_list = fish_list[:max_fish]
             for f in fish_list:
                 mark_seen(cfg, f.sp.get("name", ""))
+            env.algae = max(0.0, min(100.0, float(cfg.get("saved_algae", 0.0))))
 
         if not fish_list:
             # Fresh start: randomise decor only on the very first ever launch;
@@ -389,10 +394,9 @@ def main() -> int:
 
         # Auto-food drop welcome-back bonus (when returning after a gap)
         if _welcome_back_msg and "missed you" in _welcome_back_msg:
-            _food_cap = int(cfg.get("max_food", 30))
             for _ in range(3):
                 spawn_food_at(env, env.tank_w * (0.3 + random.random() * 0.4), env.tank_h * 0.25,
-                              max_active=_food_cap)
+                              max_active=_food_cap())
 
         # Log the welcome-back / streak message
         if _welcome_back_msg:
@@ -511,6 +515,12 @@ def main() -> int:
             status_msg   = msg
             status_timer = secs
 
+        def _food_cap() -> int:
+            """Active food cap: practically unlimited in normal play, capped in Nightmare."""
+            if int(cfg.get("difficulty", 2)) == 5:
+                return 40   # Nightmare: scarce food intentional
+            return 350      # ~70s of non-stop spam at 5 flakes/click before any cap
+
         # Rotating idle tips shown when the status bar has been quiet a while
         _TIPS = [
             "Right-click anywhere for a quick action menu.",
@@ -621,6 +631,7 @@ def main() -> int:
                     _w, _h = surface.get_size()
                     cfg["window_w"], cfg["window_h"] = _w, _h
                 cfg["toolbar_collapsed"] = renderer.toolbar_collapsed
+                cfg["saved_algae"] = float(env.algae)
                 cfg_mod.save(cfg)
                 if cfg.get("persist_state", True):
                     cfg_mod.save_fish_state(fish_list)
@@ -639,7 +650,7 @@ def main() -> int:
                 paused = not paused
             elif action == "feed":
                 n = spawn_food_at(env, env.tank_w * 0.5, env.tank_h * 0.3,
-                                  max_active=int(cfg.get("max_food", 30)))
+                                  max_active=_food_cap())
                 set_status(f"Dropped {n} food flakes!")
             elif action == "clean":
                 clean_algae(env)
@@ -659,8 +670,10 @@ def main() -> int:
             elif action == "_do_reset":
                 # Actual reset after confirmation
                 fish_list = []
+                _health_warned.clear()      # stale ids must not suppress warnings for new fish
                 cfg_mod.clear_fish_state()  # prevent stale state from reloading
                 env = make_environment(tr.w, tr.h)
+                cfg["saved_algae"] = 0.0
                 sprite_cache.clear()
                 fish_info.close()
                 fish_roster.close()
@@ -671,6 +684,7 @@ def main() -> int:
                 encyclopedia.close()
                 graveyard_panel.close()
                 fish_store.close()
+                fish_store.clear_buyback()
                 context.close()
                 roster_mode = False
                 food_mode = False
@@ -813,6 +827,7 @@ def main() -> int:
                     cfg["window_x"], cfg["window_y"] = pos
                 w, h = surface.get_size()
                 cfg["window_w"], cfg["window_h"] = w, h
+                cfg["saved_algae"] = float(env.algae)
                 cfg_mod.save(cfg)
                 if cfg.get("persist_state", True):
                     cfg_mod.save_fish_state(fish_list)
@@ -824,11 +839,11 @@ def main() -> int:
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                     cursor_mgr.on_click()
 
-                # ── Background music: track-end and UI controls ──────────
+                # ── Background music: track-end only ──────────────────────
+                # UI controls are handled later (after all overlay panels) so
+                # that open dialogs/settings block click-through to the music strip.
                 if ev.type == MUSIC_END_EVENT:
                     music.on_track_end()
-                    continue
-                if music.handle_event(ev):
                     continue
 
                 # Confirm dialog eats all events while open
@@ -882,6 +897,8 @@ def main() -> int:
                         cfg["stat_nightmare_days"]   = 0.0
                         cfg["stat_profile_opens"]    = 0
                         cfg["stat_bred_fish"]        = 0
+                        cfg["stat_deaths"]           = 0
+                        cfg["stat_coins_earned"]     = 0
                         cfg_mod.save(cfg)
                         cfg_mod.clear_fish_state()  # wipe persisted fish on full reset
                         win_mod.set_opacity(sdl_win, cfg.get("opacity", 1.0))
@@ -979,6 +996,7 @@ def main() -> int:
                             fish_roster.invalidate_thumb(sold_fish)
                             fish_list.remove(sold_fish)
                             _health_warned.discard(id(sold_fish))
+                            fish_store.record_sale(sold_fish, price_sell)
                             earn_coins(cfg, price_sell, float(scx), float(scy),
                                        coin_popups, log_event,
                                        f"Sold {sold_fish.name} for {price_sell} coins")
@@ -989,6 +1007,15 @@ def main() -> int:
                             set_status(f"Sold {sold_fish.name} for {price_sell} coins!")
                             cfg_mod.save(cfg)
                             cfg_mod.save_fish_state(fish_list)
+                        continue
+                    if result == "feed":
+                        _feed_target = fish_info.fish
+                        if _feed_target is not None:
+                            _fx = _feed_target.x
+                            _fy = max(20.0, _feed_target.y - 30.0)
+                            spawn_food_at(env, _fx, _fy,
+                                          max_active=_food_cap())
+                            set_status(f"Feeding {_feed_target.name}!")
                         continue
                     if result == "close_outside":
                         # Fish info was closed by an outside click; let this event pass through.
@@ -1095,7 +1122,9 @@ def main() -> int:
                         action_type, *action_args = store_action
                         if action_type == "buy":
                             buy_idx, sp_buy, price_buy = action_args
-                            if spend_coins(cfg, price_buy):
+                            if len(fish_list) >= int(cfg.get("max_fish", 30)):
+                                set_status(f"Tank is full! (max {int(cfg.get('max_fish', 30))} fish)")
+                            elif spend_coins(cfg, price_buy):
                                 new_f = make_fish(
                                     env.tank_w, env.tank_h,
                                     species=sp_buy,
@@ -1129,6 +1158,10 @@ def main() -> int:
                                 scy = tr.top  + int(getattr(fish_to_sell, 'y', tr.h // 2))
                                 fish_roster.invalidate_thumb(fish_to_sell)
                                 fish_list.remove(fish_to_sell)
+                                _health_warned.discard(id(fish_to_sell))
+                                if fish_info.visible and fish_info.fish is fish_to_sell:
+                                    fish_info.close()
+                                fish_store.record_sale(fish_to_sell, price_sell)
                                 earn_coins(cfg, price_sell, float(scx), float(scy),
                                            coin_popups, log_event,
                                            f"Sold {fish_to_sell.name} for {price_sell} coins")
@@ -1136,6 +1169,26 @@ def main() -> int:
                                 # Persist immediately so a crash won't lose the sale
                                 cfg_mod.save(cfg)
                                 cfg_mod.save_fish_state(fish_list)
+                        elif action_type == "buyback":
+                            bb_fish, bb_price = action_args[0], action_args[1]
+                            if bb_fish in fish_list:
+                                # Fish somehow already back in tank (shouldn't happen)
+                                fish_store.remove_buyback(bb_fish)
+                            elif len(fish_list) >= int(cfg.get("max_fish", 30)):
+                                set_status(f"Tank is full! (max {int(cfg.get('max_fish', 30))} fish)")
+                            elif spend_coins(cfg, bb_price):
+                                fish_store.remove_buyback(bb_fish)
+                                fish_list.append(bb_fish)
+                                fish_roster.invalidate_thumb(bb_fish)
+                                log_event(cfg,
+                                          f"Bought back {bb_fish.name}"
+                                          f" ({bb_fish.sp.get('name','')}) for {bb_price} coins.",
+                                          "coin")
+                                set_status(f"Bought back {bb_fish.name} for {bb_price} coins!")
+                                cfg_mod.save(cfg)
+                                cfg_mod.save_fish_state(fish_list)
+                            else:
+                                set_status(f"Not enough coins! Need {bb_price}.")
                         elif action_type == "restock":
                             restock_cost = action_args[0]
                             if spend_coins(cfg, restock_cost):
@@ -1147,6 +1200,12 @@ def main() -> int:
                             else:
                                 set_status(f"Not enough coins to restock! Need {restock_cost}.")
                         continue
+
+                # Music Player UI events — handled here so all overlay panels
+                # (settings, fish_info, store, etc.) take priority and prevent
+                # clicks from passing through to the music strip behind them.
+                if music.handle_event(ev):
+                    continue
 
                 # Music Player toolbar button
                 if (not renderer.toolbar_collapsed
@@ -1183,14 +1242,34 @@ def main() -> int:
                 if fish_roster.visible:
                     result = fish_roster.handle_event(ev, fish_list)
                     roster_mode = fish_roster.visible
-                    if isinstance(result, int) and not isinstance(result, bool) and 0 <= result < len(fish_list):
-                        sel = fish_list[result]
-                        fish_info.open(sel, *surface.get_size(),
-                                       ev.pos[0], ev.pos[1],
-                                       renderer.assets.fish_sheets)
-                        cfg["stat_profile_opens"] = int(cfg.get("stat_profile_opens", 0)) + 1
-                        fish_roster.close()
-                        roster_mode = False
+                    # Tuple results from the side card's Feed / Sell buttons
+                    if isinstance(result, tuple) and len(result) == 2:
+                        action, target_fish = result
+                        if action == "feed" and target_fish is not None:
+                            _fx = target_fish.x
+                            _fy = max(20.0, target_fish.y - 30.0)
+                            spawn_food_at(env, _fx, _fy,
+                                          max_active=_food_cap())
+                            set_status(f"Feeding {target_fish.name}!")
+                        elif (action == "sell" and target_fish is not None
+                              and target_fish in fish_list):
+                            price_sell = fish_sell_price(target_fish)
+                            scx = tr.left + int(getattr(target_fish, "x", tr.w // 2))
+                            scy = tr.top  + int(getattr(target_fish, "y", tr.h // 2))
+                            fish_roster.invalidate_thumb(target_fish)
+                            fish_list.remove(target_fish)
+                            _health_warned.discard(id(target_fish))
+                            fish_store.record_sale(target_fish, price_sell)
+                            earn_coins(cfg, price_sell, float(scx), float(scy),
+                                       coin_popups, log_event,
+                                       f"Sold {target_fish.name} for {price_sell} coins")
+                            log_event(cfg,
+                                      f"Sold {target_fish.name}"
+                                      f" ({target_fish.sp.get('name', '')}) for {price_sell} coins.",
+                                      "coin")
+                            set_status(f"Sold {target_fish.name} for {price_sell} coins!")
+                            cfg_mod.save(cfg)
+                            cfg_mod.save_fish_state(fish_list)
                         continue
                     if result is True:
                         continue
@@ -1234,7 +1313,7 @@ def main() -> int:
                             food_x = target.x
                             food_y = max(20.0, target.y - 40.0)
                             n = spawn_food_at(env, food_x, food_y,
-                                              max_active=int(cfg.get("max_food", 30)))
+                                              max_active=_food_cap())
                             hunger_pct = int(target.hunger * 100)
                             label = f"hungry ({hunger_pct}%)" if target.hunger > 0.15 else "full"
                             set_status(f"Feeding {target.name} \u2014 {label}")
@@ -1327,7 +1406,7 @@ def main() -> int:
                             iy = float(my - tr.top)
                             if food_mode:
                                 n = spawn_food_at(env, ix, iy,
-                                                  max_active=int(cfg.get("max_food", 30)))
+                                                  max_active=_food_cap())
                                 set_status(f"Dropped {n} food flakes!")
                             elif clean_mode:
                                 do_action("clean")
@@ -1673,6 +1752,8 @@ def main() -> int:
                     prev_count = len(fish_list)
                     added = ensure_min_population(fish_list, env.tank_w, env.tank_h, cfg)
                     cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + added
+                    for _fa in fish_list[prev_count:]:
+                        mark_seen(cfg, _fa.sp.get("name", ""))
 
                     # ---- Algae danger warning (fires once when crossing 80%) ----
                     if float(env.algae) >= 80.0:
@@ -1903,6 +1984,7 @@ def main() -> int:
             cursor_mgr.draw(surface)
             pygame.display.flip()
 
+            await asyncio.sleep(0)
             clock.tick(RENDER_FPS)
             actual_fps = clock.get_fps()
             fps_smoothed = fps_smoothed * 0.9 + actual_fps * 0.1
@@ -1924,15 +2006,19 @@ def main() -> int:
         log.exception("Fatal error in main loop")
         tb_text = traceback.format_exc()
         log_path = str(LOG_DIR / "aquarium.log")
-        try:
-            dlg = CrashDialog(tb_text, log_path)
-            dlg.run()
-        except Exception:  # noqa: BLE001 — crash dialog itself failed; just exit
-            pass
+        # CrashDialog uses a synchronous blocking event loop which deadlocks
+        # the browser in WASM.  Skip it there — the traceback is already in
+        # the log file and console.
+        if platform.system() != "Emscripten":
+            try:
+                dlg = CrashDialog(tb_text, log_path)
+                dlg.run()
+            except Exception:  # noqa: BLE001 — crash dialog itself failed; just exit
+                pass
         return 1
     finally:
         _release_lock()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(asyncio.run(main()))

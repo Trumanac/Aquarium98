@@ -25,7 +25,10 @@ COL_SUPER_RARE = (180,  70, 240)   # purple
 
 # Panel dimensions
 PW = 300
-PH = 338   # expanded to fit HP + Hunger + Age stats block
+PH = 352   # expanded to fit HP + Hunger + Age + Diet stats block
+
+# Feed button coin cost (drops food at no real cost — just a convenience UI)
+_FEED_BTN_W = 58
 
 # Fixed layout offsets (relative to panel top-left)
 _TB_H    = 18   # title bar height
@@ -132,6 +135,7 @@ class FishInfoPanel:
         self._save_btn   = pygame.Rect(0, 0, 0, 0)
         self._close2_btn = pygame.Rect(0, 0, 0, 0)
         self._sell_btn   = pygame.Rect(0, 0, 0, 0)
+        self._feed_btn   = pygame.Rect(0, 0, 0, 0)
         # Thumbnail cache
         self._thumb: pygame.Surface | None = None
         self._thumb_fid: int = -1
@@ -161,10 +165,21 @@ class FishInfoPanel:
         _wrap_w = PW - _PAD * 2
         self._fact_lines = _wrap(self.font, self._fact, _wrap_w)[:4]
         self._personality_lines = _wrap(self.font, fish.personality_desc, _wrap_w)[:3]
+        # Compute a tight panel height that fits this fish's actual content
+        fh_d = self.font.get_height()
+        _diet_extra    = (fh_d + 2) if fish.sp.get("diet") else 0
+        _lineage_extra = (fh_d + 2) if fish.born_from else 0
+        _rc_h   = 3 * fh_d + 31 + _diet_extra + _lineage_extra  # right-column info rows
+        _top_h  = max(_THUMB_H, _rc_h)
+        _cdyn   = _top_h + 5
+        _cdyn  += 4 + (fh_d + 2) + len(self._fact_lines) * (fh_d + 1)
+        _cdyn  += 3 + 4 + (fh_d + 2) + len(self._personality_lines) * (fh_d + 1)
+        _stats_h = _PAD + 22 + 4 + fh_d + 3 + 11 + 3 + 11 + 4  # bottom stats block
+        ph_dyn = max(280, 25 + _cdyn + _stats_h + 8)
         # Position near click, clamped to window
         px = max(0, min(screen_w - PW, click_x - PW // 2))
-        py = max(0, min(screen_h - PH, click_y - 32))
-        self._rect = pygame.Rect(px, py, PW, PH)
+        py = max(0, min(screen_h - ph_dyn, click_y - 32))
+        self._rect = pygame.Rect(px, py, PW, ph_dyn)
         self._layout()
         self.visible = True
 
@@ -189,10 +204,11 @@ class FishInfoPanel:
         name_lbl_y = cy
         input_y    = cy + fh + 3
         self._input_rect = pygame.Rect(rx, input_y, rw, _INPUT_H)
-        # Bottom buttons
-        self._save_btn   = pygame.Rect(r.right - _PAD - 144, r.bottom - _PAD - 22, 68, 22)
-        self._close2_btn = pygame.Rect(r.right - _PAD - 70,  r.bottom - _PAD - 22, 64, 22)
-        self._sell_btn   = pygame.Rect(r.left  + _PAD,        r.bottom - _PAD - 22, 80, 22)
+        # Bottom buttons: Sell | Feed | [gap] Save Name | Close
+        self._sell_btn   = pygame.Rect(r.left  + _PAD,               r.bottom - _PAD - 22, 72, 22)
+        self._feed_btn   = pygame.Rect(r.left  + _PAD + 76,          r.bottom - _PAD - 22, _FEED_BTN_W, 22)
+        self._save_btn   = pygame.Rect(r.right - _PAD - 144,         r.bottom - _PAD - 22, 68, 22)
+        self._close2_btn = pygame.Rect(r.right - _PAD - 70,          r.bottom - _PAD - 22, 64, 22)
 
     # ------------------------------------------------------------------
     def handle_event(self, ev: pygame.event.Event) -> str | None:
@@ -224,6 +240,8 @@ class FishInfoPanel:
                 self.close(); return "close_inside"
             if self._sell_btn.inflate(0, 8).collidepoint(ev.pos):
                 return "sell"
+            if self._feed_btn.inflate(0, 8).collidepoint(ev.pos):
+                return "feed"
             if self._save_btn.inflate(0, 8).collidepoint(ev.pos):
                 old_name = self.fish.name if self.fish else ""
                 self._apply_rename()
@@ -363,13 +381,25 @@ class FishInfoPanel:
             badge_s = fnt.render(" ◆ UNCOMMON", True, COL_UNCOMMON)
             surface.blit(badge_s, (rx + sp_s.get_width(), sp_y))
 
+        # ── Diet ─────────────────────────────────────────────────
+        diet_str = f.sp.get("diet", "")
+        if diet_str:
+            diet_s = fnt.render(diet_str, True, (60, 100, 60))
+            clip_diet = pygame.Rect(rx, sp_y + fh + 2, r.right - rx - _PAD, fh)
+            surface.set_clip(clip_diet)
+            surface.blit(diet_s, (rx, sp_y + fh + 2))
+            surface.set_clip(None)
+            diet_extra = fh + 2
+        else:
+            diet_extra = 0
+
         # ── Mood indicator ────────────────────────────────────────
         mood = getattr(f, "mood", "content")
         mood_face  = {"happy": "☺", "content": "—", "stressed": "☹", "hungry": "o"}.get(mood, "—")
         mood_color = {"happy": (30, 200, 60), "content": (80, 200, 80),
                       "stressed": (220, 60, 60), "hungry": (220, 160, 20)}.get(mood, (128, 128, 128))
         mood_s = fnt.render(f"{mood_face} {mood.capitalize()}", True, mood_color)
-        surface.blit(mood_s, (rx, sp_y + fh + 2))
+        surface.blit(mood_s, (rx, sp_y + fh + 2 + diet_extra))
 
         # ── Lineage ───────────────────────────────────────────────
         born_from = getattr(f, "born_from", None)
@@ -377,16 +407,17 @@ class FishInfoPanel:
             lin_s = fnt.render(f"Offspring of {born_from[0]} & {born_from[1]}",
                                True, (80, 80, 120))
             # Clip to right column width
-            clip_r2 = pygame.Rect(rx, sp_y + fh * 2 + 4, r.right - rx - _PAD, fh)
+            lin_y = sp_y + fh * 2 + 4 + diet_extra
+            clip_r2 = pygame.Rect(rx, lin_y, r.right - rx - _PAD, fh)
             surface.set_clip(clip_r2)
-            surface.blit(lin_s, (rx, sp_y + fh * 2 + 4))
+            surface.blit(lin_s, (rx, lin_y))
             surface.set_clip(None)
             lineage_extra = fh + 2
         else:
             lineage_extra = 0
 
-        # Row bottom is the taller of thumbnail or name/species/mood block
-        top_section_bottom = max(tf.bottom, sp_y + fh * 2 + 4 + lineage_extra + 2)
+        # Row bottom is the taller of thumbnail or name/species/mood/diet block
+        top_section_bottom = max(tf.bottom, sp_y + fh * 2 + 4 + diet_extra + lineage_extra + 2)
         dy = top_section_bottom + 5
 
         # ── Divider ───────────────────────────────────────────────
@@ -467,7 +498,7 @@ class FishInfoPanel:
             surface.blit(bs, (btn.left + (btn.w - bs.get_width()) // 2,
                                btn.top  + (btn.h - bs.get_height()) // 2))
 
-        # Sell button (left side of button row)
+        # Bottom-row left buttons: Sell and Feed
         sell_price = fish_sell_price(f)
         sell_label = f"Sell ({sell_price}c)"
         pygame.draw.rect(surface, WIN_GRAY, self._sell_btn)
@@ -475,4 +506,11 @@ class FishInfoPanel:
         ss = fnt.render(sell_label, True, (0, 100, 0))
         surface.blit(ss, (self._sell_btn.left + (self._sell_btn.w - ss.get_width()) // 2,
                           self._sell_btn.top  + (self._sell_btn.h - ss.get_height()) // 2))
+
+        # Feed button
+        pygame.draw.rect(surface, WIN_GRAY, self._feed_btn)
+        _bevel(surface, self._feed_btn)
+        feed_s = fnt.render("Feed", True, (0, 80, 160))
+        surface.blit(feed_s, (self._feed_btn.left + (self._feed_btn.w - feed_s.get_width()) // 2,
+                               self._feed_btn.top  + (self._feed_btn.h - feed_s.get_height()) // 2))
 

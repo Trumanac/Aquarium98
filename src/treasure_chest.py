@@ -41,13 +41,56 @@ OPEN_WAIT   = 28.0  # seconds the chest stays open before auto-closing
 # ---------------------------------------------------------------------------
 # Economy tables
 # ---------------------------------------------------------------------------
-_COIN_RANGES: dict[int, tuple[int, int]] = {
-    1: (15, 35),
-    2: (10, 25),
-    3: (5,  15),
-    4: (3,  10),
-    5: (2,   7),
+
+# Tiered jackpot table — each entry:
+#   (weight, base_min, base_max)
+# A random tier is drawn by weighted choice, then the reward is
+# randint(base_min, base_max) so no two chests ever give the exact same amount.
+# Weights are relative; higher weight = more common.
+#   ~"jackpot"   ≈100 coins  weight  1   (≈1.6 %)
+#   ~"big"       ≈ 75 coins  weight  3   (≈4.8 %)
+#   ~"decent"    ≈ 50 coins  weight  8   (≈12.9%)
+#   ~"small"     ≈ 25 coins  weight 16   (≈25.8%)
+#   ~"pocket"    ≈ 10 coins  weight 34   (≈54.8%)
+_JACKPOT_TIERS: list[tuple[int, int, int]] = [
+    ( 1,  90, 110),   # jackpot   ~100
+    ( 3,  65,  85),   # big       ~ 75
+    ( 8,  42,  58),   # decent    ~ 50
+    (16,  18,  32),   # small     ~ 25
+    (34,   6,  14),   # pocket    ~ 10
+]
+
+# Difficulty scales the pocket-change floor — harder difficulties also
+# reduce the effective weight of the top two tiers.
+_DIFF_TIER_WEIGHT_MULT: dict[int, list[float]] = {
+    # jackpot  big  decent  small  pocket
+    1: [1.6,  1.4,  1.2,   1.0,   0.8],   # Easy   — jackpots more likely
+    2: [1.0,  1.0,  1.0,   1.0,   1.0],   # Normal — baseline
+    3: [0.7,  0.8,  0.9,   1.0,   1.2],   # Hard
+    4: [0.4,  0.6,  0.8,   1.0,   1.4],
+    5: [0.2,  0.4,  0.7,   1.0,   1.6],
 }
+
+# Difficulty also applies a flat coins multiplier to base ranges
+_DIFF_COIN_MULT: dict[int, float] = {
+    1: 1.20,
+    2: 1.00,
+    3: 0.80,
+    4: 0.60,
+    5: 0.45,
+}
+
+
+def _roll_coins(difficulty: int) -> int:
+    """Pick a randomised coin reward from the tiered jackpot table."""
+    mults = _DIFF_TIER_WEIGHT_MULT.get(difficulty, _DIFF_TIER_WEIGHT_MULT[2])
+    coin_mult = _DIFF_COIN_MULT.get(difficulty, 1.0)
+    weights   = [max(0.01, _JACKPOT_TIERS[i][0] * mults[i]) for i in range(len(_JACKPOT_TIERS))]
+    tier      = random.choices(_JACKPOT_TIERS, weights=weights, k=1)[0]
+    lo        = max(1, int(tier[1] * coin_mult))
+    hi        = max(lo + 1, int(tier[2] * coin_mult))
+    return random.randint(lo, hi)
+
 
 _COOLDOWN: dict[int, tuple[int, int]] = {
     1: (90,  180),
@@ -99,8 +142,7 @@ class TreasureChest:
         if self.state == "cooldown":
             self.timer -= dt
             if self.timer <= 0.0:
-                lo, hi = _COIN_RANGES.get(diff, _COIN_RANGES[2])
-                self.pending_coins = random.randint(lo, hi)
+                self.pending_coins = _roll_coins(diff)
                 self.state = "opening"
                 self.frame = 0.0
 

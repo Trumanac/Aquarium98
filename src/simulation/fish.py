@@ -126,6 +126,9 @@ class Fish:
     graze_wall: str = "bottom"   # "bottom" | "left" | "right"
     # Sprite rotation angle (degrees) for the grazing pose; 0 = horizontal (bottom)
     graze_angle: float = 0.0
+    # Cooldown (s) after a graze session ends before the fish will snap to the glass again.
+    # Prevents rapid oscillation when algae hovers just above the 2 % stop threshold.
+    graze_cd: float = 0.0
 
 
 def make_fish(tank_w: int, tank_h: int, *,
@@ -190,11 +193,17 @@ def make_fish(tank_w: int, tank_h: int, *,
                 suffix += 1
             name = f"{base} {suffix}"
     personality = _gen_personality(sp, speed_mult, layer)
-    # Assign structured personality type for behavior wiring
+    # Assign structured personality type for behavior wiring.
+    # Only truly territorial species (e.g. Betta) become "solitary" — which
+    # causes stress near other fish. Non-sociable but non-territorial fish just
+    # don't school; they are assigned a calm independent personality instead.
     if speed_mult > 1.10:
         ptype = "energetic"
-    elif not sp.get("sociable", True):
+    elif sp.get("territorial"):
         ptype = "solitary"
+    elif not sp.get("sociable", True):
+        # Independent fish: won't school, but not stressed by company
+        ptype = "lazy" if random.random() < 0.60 else "curious"
     elif random.random() < 0.28:
         ptype = "curious"
     else:
@@ -800,6 +809,9 @@ def update_fish(f: Fish, tank_w: int, tank_h: int, dt: float,
 
     # Algae eaters: graze proportionally to algae level; hunger penalty when tank is clean
     if f.sp.get("algae_eater") and env is not None:
+        # Drain re-graze cooldown regardless of current algae level
+        if f.graze_cd > 0:
+            f.graze_cd = max(0.0, f.graze_cd - dt)
         algae_lvl = env.algae
         if algae_lvl > 2.0:
             # Graze rate scales with how fouled the tank is
@@ -810,7 +822,10 @@ def update_fish(f: Fish, tank_w: int, tank_h: int, dt: float,
             if algae_lvl > 10.0:
                 f.hunger = max(0.0, f.hunger - dt * 0.007)
             if f.sp.get("algae_seeker"):
-                new_grazing = (f.state != "chase")
+                # Hysteresis: only START grazing when algae >= 5 % and cooldown
+                # has expired; once grazing, continue until algae drops to 2 %.
+                can_start = (algae_lvl >= 5.0) and (f.graze_cd <= 0)
+                new_grazing = (f.state != "chase") and (f.is_grazing or can_start)
                 if new_grazing and not f.is_grazing:
                     # Transition: pick wall, position, force to front layer
                     _start_grazing(f, tank_w, tank_h, fish_list)
@@ -819,6 +834,9 @@ def update_fish(f: Fish, tank_w: int, tank_h: int, dt: float,
             # No algae to eat — hunger rises faster (missing natural food source)
             f.hunger = min(1.0, f.hunger + dt * 0.004)
             if f.sp.get("algae_seeker"):
+                if f.is_grazing:
+                    # Session ended; impose cooldown before next wall-snap
+                    f.graze_cd = random.uniform(20.0, 40.0)
                 f.is_grazing = False
         # Eat grounded food nearby (fallback when algae is scarce)
         if food_list:
@@ -852,7 +870,7 @@ def update_fish(f: Fish, tank_w: int, tank_h: int, dt: float,
         return
 
     # Hunt food when hungry; curious fish have 1.5× detection radius
-    if food_list and f.hunger > 0.45 and not f.sp.get("crawler"):
+    if food_list and f.hunger > 0.35 and not f.sp.get("crawler"):
         base_range = 220.0
         if f.personality_type == "curious":
             base_range = 330.0
@@ -963,8 +981,13 @@ def update_mood(f: Fish, dt: float, algae_pct: float,
         excess = (algae_pct - 65) / 35.0
         f.stress = min(1.0, f.stress + dt * 0.06 * excess)
 
-    # Solitary fish get stressed near other fish
-    if f.personality_type == "solitary" and near_fish_count > 0:
+    # Solitary fish get stressed near other fish.
+    # Exception: lurk_castle species (Dragon Goby, Kuhli Loach etc.) coexist
+    # with other bottom-dwellers near the castle by nature — proximity there
+    # is expected, not threatening.
+    if (f.personality_type == "solitary"
+            and not f.sp.get("lurk_castle")
+            and near_fish_count > 0):
         f.stress = min(1.0, f.stress + dt * 0.12 * near_fish_count)
 
     # Derive final mood
@@ -1025,6 +1048,11 @@ def fish_to_dict(f: Fish) -> dict:
 def fish_from_dict(d: dict, tank_w: int, tank_h: int) -> "Fish | None":
     """Reconstruct a Fish from a saved dict. Returns None if species unknown."""
     sp_name = d.get("species_name", "")
+    # Migrate renamed species so existing saves don't lose their fish
+    _SPECIES_RENAMES = {
+        "Crimson Fanveil": "Royal Fanveil",
+    }
+    sp_name = _SPECIES_RENAMES.get(sp_name, sp_name)
     sp = next((s for s in SPECIES if s.get("name") == sp_name), None)
     if sp is None:
         log.warning("fish_from_dict: unknown species %r (fish %r) — skipping",
@@ -1055,6 +1083,11 @@ def fish_from_dict(d: dict, tank_w: int, tank_h: int) -> "Fish | None":
     f.hue_offset    = (int(hue[0]), int(hue[1]), int(hue[2]))
     f.personality_desc = str(d.get("personality_desc", ""))
     f.personality_type = str(d.get("personality_type", "social"))
+    # Migration: all non-territorial species that previously gained "solitary" via
+    # sociable=False should not stress near other fish.  Only species with
+    # territorial=True (currently only Betta) keep the solitary personality type.
+    if f.personality_type == "solitary" and not f.sp.get("territorial"):
+        f.personality_type = random.choice(["lazy", "lazy", "curious"])
     born            = d.get("born_from")
     f.born_from     = (str(born[0]), str(born[1])) if born else None
     f.mood          = str(d.get("mood", "content"))

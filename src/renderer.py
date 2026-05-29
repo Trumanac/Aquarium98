@@ -147,7 +147,6 @@ CASTLE_H  = 94     # at reference resolution
 _CASTLE_VIS_BOT_FRACS = [0.82, 0.82, 0.88, 0.91, 0.92]
 
 PLANT_IX  = 278    # interior X of plant left edge
-PLANT_OY  = 90     # plant bottom is 90 px above interior floor
 PLANT_W   = 150    # at reference resolution
 PLANT_H   = 84     # at reference resolution
 
@@ -1002,7 +1001,7 @@ class Renderer:
             _pry = tr.h / _REF_H
             _ph  = plant_s.get_height()
             px = tr.left + int(PLANT_IX * _prx)
-            py = tr.bottom - _ph - int(6 * _pry)   # bottom of plant ≈ sand floor
+            py = tr.bottom - _ph - int(6 * _pry)   # 6 px offset seats root in sand
             s.blit(plant_s, (px, py))
 
         # ---- Z-17/18/19: Front-layer entities (layer 1, swimming fish) ----

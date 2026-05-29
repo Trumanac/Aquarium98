@@ -50,7 +50,7 @@ CURRENT_VERSION = "1.0"
 SLOT_CAPS = {
     "max_fish":    30,
     "max_bubbles": 30,
-    "max_food":    60,
+    "max_food":    300,
 }
 
 # ---------------------------------------------------------------------------
@@ -61,31 +61,31 @@ DIFFICULTY_PRESETS: dict[int, dict[str, Any]] = {
         "min_fish": 3, "max_fish": 30, "start_fish": 8,
         "hunger_rate": 0.20, "breed_rate": 1.20, "algae_rate": 0.15,
         "growth_rate": 0.80, "age_rate": 0.60, "bubble_rate": 1.0,
-        "max_food": 50,
+        "max_food": 300,
     },
     2: {  # Normal
         "min_fish": 2, "max_fish": 25, "start_fish": 6,
         "hunger_rate": 0.50, "breed_rate": 0.70, "algae_rate": 0.30,
         "growth_rate": 0.50, "age_rate": 1.00, "bubble_rate": 1.0,
-        "max_food": 40,
+        "max_food": 300,
     },
     3: {  # Hard
         "min_fish": 1, "max_fish": 20, "start_fish": 5,
         "hunger_rate": 1.00, "breed_rate": 0.45, "algae_rate": 0.50,
         "growth_rate": 0.40, "age_rate": 1.30, "bubble_rate": 1.0,
-        "max_food": 32,
+        "max_food": 300,
     },
     4: {  # Brutal
         "min_fish": 0, "max_fish": 15, "start_fish": 4,
         "hunger_rate": 1.60, "breed_rate": 0.30, "algae_rate": 0.80,
         "growth_rate": 0.30, "age_rate": 1.60, "bubble_rate": 1.0,
-        "max_food": 26,
+        "max_food": 300,
     },
     5: {  # Nightmare
         "min_fish": 0, "max_fish": 10, "start_fish": 3,
         "hunger_rate": 2.20, "breed_rate": 0.18, "algae_rate": 1.20,
         "growth_rate": 0.25, "age_rate": 2.00, "bubble_rate": 1.0,
-        "max_food": 20,
+        "max_food": 60,  # enforced hard cap — food is intentionally scarce
     },
 }
 
@@ -153,7 +153,15 @@ def _validate(cfg: dict[str, Any]) -> dict[str, Any]:
     preset = DIFFICULTY_PRESETS[cfg["difficulty"]]
     cfg["min_fish"]    = preset["min_fish"]
     cfg["start_fish"]  = preset["start_fish"]
-    cfg["max_food"]    = preset["max_food"]
+    # Nightmare enforces its hard food cap; all other difficulties respect the
+    # user's saved value (or default to the system max — food feels unlimited).
+    if cfg["difficulty"] == 5:
+        cfg["max_food"] = preset["max_food"]  # 60 — food is intentionally scarce
+    else:
+        cfg["max_food"] = max(1, min(
+            SLOT_CAPS["max_food"],
+            _safe_int(cfg.get("max_food", SLOT_CAPS["max_food"]), SLOT_CAPS["max_food"])
+        ))
     cfg["hunger_rate"] = preset["hunger_rate"]
     cfg["breed_rate"]  = preset["breed_rate"]
     cfg["algae_rate"]  = preset["algae_rate"]

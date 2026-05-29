@@ -19,6 +19,7 @@ SPECIES: list[dict] = [
     dict(name="Clownfish",  body=(255, 140, 30),  fin=(255, 255, 255), accent=(255, 255, 255),
          size=7,  speed=18, sociable=True,  pattern="stripes",  aspect=1.10, fin_style="normal",
          school_size=2, layer_pref=1, sheet="Clown_Fish.png",
+         diet="Omnivore — flakes, brine shrimp",
          fun_facts=[
              "Clownfish are all born male — the dominant fish in a group changes sex to become female.",
              "They are immune to the stinging cells of their host anemone due to a special mucus coating.",
@@ -29,25 +30,29 @@ SPECIES: list[dict] = [
     # Bright blue body, yellow tail.  Fast, active schooler in open water.
     dict(name="RegalTang",  body=(40, 90, 220),   fin=(255, 220, 40),  accent=(20, 20, 40),
          size=8,  speed=22, sociable=True,  pattern="topband",  aspect=1.25, fin_style="normal",
-         school_size=3, layer_pref=1, sheet="RegalTang_Fish.png"),
+         school_size=3, layer_pref=1, sheet="RegalTang_Fish.png",
+         diet="Herbivore — algae, marine seaweed"),
 
     # ── Yellow Tang ────────────────────────────────────────────────────────
     # Uniform bright yellow.  Peaceful mid-column schooler.
     dict(name="YellowTang", body=(255, 210, 30),  fin=(255, 180, 20),  accent=(220, 160, 10),
          size=7,  speed=20, sociable=True,  pattern="none",     aspect=1.30, fin_style="normal",
-         school_size=3, layer_pref=2, sheet="YellowTang_Fish.png"),
+         school_size=3, layer_pref=2, sheet="YellowTang_Fish.png",
+         diet="Herbivore — algae, marine plants"),
 
     # ── Angelfish ──────────────────────────────────────────────────────────
     # Tall, disc-shaped body.  Elegant slow swimmer, solitary.
     dict(name="Angelfish",  body=(245, 245, 255), fin=(50, 50, 80),    accent=(30, 30, 40),
          size=10, speed=14, sociable=False, pattern="stripes",  aspect=1.50, fin_style="big",
-         uncommon=True, layer_pref=2, sheet="Angel_Fish.png"),
+         uncommon=True, layer_pref=2, sheet="Angel_Fish.png",
+         diet="Omnivore — flakes, brine shrimp"),
 
     # ── Emperor Angelfish ──────────────────────────────────────────────────
     # Striking blue + yellow striped adult.  Semi-territorial, mid depth.
     dict(name="Emperor",    body=(70, 150, 230),  fin=(255, 210, 40),  accent=(255, 210, 40),
          size=9,  speed=15, sociable=False, pattern="stripes",  aspect=1.20, fin_style="normal",
          uncommon=True, layer_pref=2, sheet="Emperor_Fish.png",
+         diet="Omnivore — flakes, sponge, meaty foods",
          fun_facts=[
              "The Emperor Angelfish starts life with a completely different look: dark blue with white circles.",
              "It takes 3-4 years for the full adult coloration of blue stripes and yellow body to develop.",
@@ -57,6 +62,7 @@ SPECIES: list[dict] = [
     dict(name="Butterfly",  body=(255, 225, 80),  fin=(240, 200, 60),  accent=(20, 20, 40),
          size=7,  speed=18, sociable=True,  pattern="band",     aspect=1.25, fin_style="normal",
          uncommon=True, school_size=2, layer_pref=2, sheet="Butterfly_Fish.png",
+         diet="Carnivore — coral polyps, mysis shrimp",
          fun_facts=[
              "Butterfly Fish have a false eyespot near their tail to confuse predators about which end is the head.",
              "They are among the most faithful animals on Earth — pairs stay bonded for life.",
@@ -66,6 +72,7 @@ SPECIES: list[dict] = [
     dict(name="Lionfish",   body=(220, 90, 60),   fin=(255, 240, 210), accent=(245, 235, 210),
          size=9,  speed=10, sociable=False, pattern="stripes",  aspect=1.15, fin_style="big",
          uncommon=True, layer_pref=1, sheet="Lion_Fish.png",
+         diet="Carnivore — live fish, shrimp, meaty foods",
          fun_facts=[
              "The Lionfish's feathery spines contain venom glands — but only dangerous to predators, not tankmates.",
              "Despite their fierce look, Lionfish are timid and prefer to ambush rather than actively chase prey.",
@@ -75,6 +82,7 @@ SPECIES: list[dict] = [
     dict(name="Damsel",     body=(40, 120, 255),  fin=(20, 80, 200),   accent=(0, 40, 160),
          size=5,  speed=24, sociable=True,  pattern="none",     aspect=1.00, fin_style="normal",
          school_size=2, layer_pref=3, sheet="Damsel_Fish.png",
+         diet="Omnivore — flakes, algae, brine shrimp",
          fun_facts=[
              "Damselfish are famously territorial — a single 4-inch Damsel has been known to drive away much larger fish.",
              "They are one of only a few fish species known to actively 'farm' their own patches of algae.",
@@ -84,6 +92,7 @@ SPECIES: list[dict] = [
     dict(name="Cardinal",   body=(210, 40, 60),   fin=(255, 255, 255), accent=(255, 255, 255),
          size=6,  speed=16, sociable=True,  pattern="stripes",  aspect=1.10, fin_style="normal",
          school_size=3, layer_pref=2, sheet="Cardinal_Fish.png",
+         diet="Carnivore — mysis shrimp, small crustaceans",
          fun_facts=[
              "Male Cardinal Fish are mouthbrooders — they hold fertilized eggs in their mouths until they hatch.",
              "They school in groups of thousands in the wild, forming shifting clouds of red and white.",
@@ -93,6 +102,7 @@ SPECIES: list[dict] = [
     dict(name="Puffer",     body=(230, 200, 80),  fin=(200, 170, 40),  accent=(60, 50, 20),
          size=8,  speed=8,  sociable=False, pattern="spots",    aspect=1.25, fin_style="normal",
          uncommon=True, layer_pref=2, sheet="Puffer_Fish.png",
+         diet="Carnivore — shellfish, snails, hard foods",
          fun_facts=[
              "Puffer Fish inflate by swallowing water rapidly, expanding to over three times their resting size.",
              "Their beak-like teeth never stop growing and must be worn down by eating hard foods like shellfish.",
@@ -102,6 +112,7 @@ SPECIES: list[dict] = [
     dict(name="Wrasse",     body=(80, 210, 200),  fin=(240, 90, 180),  accent=(240, 90, 180),
          size=6,  speed=26, sociable=True,  pattern="topband",  aspect=1.00, fin_style="normal",
          school_size=2, layer_pref=1, sheet="Wrasse_Fish.png",
+         diet="Carnivore — parasites, worms, small inverts",
          fun_facts=[
              "Wrasse set up 'cleaning stations' on the reef where other fish line up to be cleaned of parasites.",
              "They sleep buried under sand at night to protect themselves from nocturnal predators.",
@@ -111,6 +122,7 @@ SPECIES: list[dict] = [
     dict(name="Goldie",     body=(255, 170, 40),  fin=(255, 120, 20),  accent=(255, 255, 255),
          size=8,  speed=18, sociable=True,  pattern="none",     aspect=1.10, fin_style="normal",
          school_size=2, layer_pref=2, sheet="Goldie_Fish.png",
+         diet="Omnivore — pellets, flakes, vegetables",
          fun_facts=[
              "Goldfish have a memory span of at least 3 months, thoroughly debunking the 3-second myth.",
              "They can recognize the faces of their owners and swim up excitedly when they approach.",
@@ -120,6 +132,7 @@ SPECIES: list[dict] = [
     dict(name="Neon",       body=(60, 200, 255),  fin=(255, 80, 140),  accent=(255, 40, 60),
          size=4,  speed=28, sociable=True,  pattern="topband",  aspect=1.00, fin_style="normal",
          school_size=4, layer_pref=3, sheet="Neon_Fish.png",
+         diet="Omnivore — micro flakes, brine shrimp",
          fun_facts=[
              "The Neon Tetra's famous blue stripe is not pigment — it's caused by light reflecting off tiny crystals.",
              "They navigate using a lateral line organ that detects ripples from other fish's movements.",
@@ -129,6 +142,7 @@ SPECIES: list[dict] = [
     dict(name="Guppy",      body=(255, 100, 150), fin=(120, 200, 255), accent=(140, 210, 255),
          size=4,  speed=22, sociable=True,  pattern="spots",    aspect=1.00, fin_style="big",
          school_size=2, layer_pref=1, sheet="Guppy_Fish.png",
+         diet="Omnivore — flakes, brine shrimp, algae",
          fun_facts=[
              "Male Guppies have the most diverse color patterns of any species — no two males look exactly alike.",
              "Guppies can give birth to 20-200 live young every 30 days without needing a mate each time.",
@@ -138,6 +152,7 @@ SPECIES: list[dict] = [
     dict(name="Tetra",      body=(210, 50, 70),   fin=(20, 20, 40),    accent=(20, 20, 40),
          size=5,  speed=22, sociable=True,  pattern="none",     aspect=1.05, fin_style="normal",
          school_size=3, layer_pref=3, sheet="Tetra_Fish.png",
+         diet="Omnivore — micro flakes, bloodworms",
          fun_facts=[
              "Black Widow Tetras produce ultrasonic clicks to coordinate the school — inaudible to humans.",
              "They can shift color in milliseconds; stress, excitement, and sleep each produce different hues.",
@@ -145,8 +160,9 @@ SPECIES: list[dict] = [
          ]),
 
     dict(name="Betta",      body=(180, 40, 200),  fin=(255, 80, 160),  accent=(255, 140, 200),
-         size=9,  speed=11, sociable=False, pattern="none",     aspect=1.10, fin_style="big",
+         size=9,  speed=11, sociable=False, territorial=True, pattern="none", aspect=1.10, fin_style="big",
          uncommon=True, layer_pref=1, sheet="Betta_Fish.png",
+         diet="Carnivore — bloodworms, brine shrimp, pellets",
          fun_facts=[
              "Male Bettas build elaborate bubble nests on the water's surface to house their eggs.",
              "They have a labyrinth organ that lets them breathe air directly — they can survive in low-oxygen water.",
@@ -156,6 +172,7 @@ SPECIES: list[dict] = [
     dict(name="Catfish",    body=(120, 100, 80),  fin=(70, 55, 40),    accent=(60, 50, 30),
          size=11, speed=10, sociable=False, pattern="spots",    aspect=0.70, fin_style="low",
          bottom=True, algae_eater=True, layer_pref=1, sheet="Cat_Fish.png",
+         diet="Omnivore — sinking pellets, algae wafers",
          fun_facts=[
              "Armored Catfish have bony plates instead of scales — tough enough to scratch glass.",
              "They can breathe through their intestine by swallowing air when oxygen levels drop dangerously low.",
@@ -168,6 +185,7 @@ SPECIES: list[dict] = [
          size=12, speed=12, sociable=False, pattern="topband", aspect=0.60, fin_style="low",
          bottom=True, algae_eater=True, algae_seeker=True, layer_pref=1,
          sheet="AlgaeEater_Fish.png",
+         diet="Herbivore — algae wafers, blanched vegetables",
          fun_facts=[
              "The Siamese Algae Eater is one of the only fish capable of eating red algae — a variety most species completely ignore.",
              "It uses a specialised sucker mouth to rasp algae directly off glass, rocks, and plant leaves; it is essentially always working.",
@@ -180,6 +198,7 @@ SPECIES: list[dict] = [
     dict(name="Zebra Danio",  body=(100, 160, 230), fin=(255, 210, 80),  accent=(200, 230, 255),
          size=5, speed=32, sociable=True,  pattern="topband", aspect=0.95, fin_style="normal",
          school_size=4, layer_pref=1, sheet="Danio_Fish.png",
+         diet="Omnivore — micro flakes, brine shrimp",
          fun_facts=[
              "Zebrafish were the first vertebrate to have their entire genome sequenced and are a cornerstone of medical research worldwide.",
              "They can regenerate heart tissue after injury — a capability scientists are actively studying for human cardiac therapies.",
@@ -190,6 +209,7 @@ SPECIES: list[dict] = [
     dict(name="Harlequin",    body=(80, 190, 200),  fin=(255, 200, 60),  accent=(255, 180, 40),
          size=5, speed=24, sociable=True,  pattern="band",    aspect=1.00, fin_style="normal",
          school_size=3, layer_pref=2, sheet="Rasbora_Fish.png",
+         diet="Omnivore — micro flakes, small crustaceans",
          fun_facts=[
              "Harlequin Rasboras choose their spawning sites with unusual precision — they prefer specific leaf species and will reject substitutes.",
              "The dark triangle marking is thought to disrupt predator tracking by breaking up the silhouette when the school turns in unison.",
@@ -200,6 +220,7 @@ SPECIES: list[dict] = [
     dict(name="Kuhli Loach",  body=(210, 150, 50),  fin=(50, 35, 20),   accent=(20, 15, 5),
          size=9, speed=14, sociable=True,  pattern="stripes", aspect=0.32, fin_style="low",
          bottom=True, crawler=True, lurk_castle=True, uncommon=True, school_size=2, layer_pref=1, sheet="KuhliLoach_Fish.png",
+         diet="Omnivore — sinking pellets, bloodworms",
          fun_facts=[
              "Kuhli Loaches bury themselves completely in soft substrate — they can vanish for days and reappear only when lights go off.",
              "Despite looking like eels, they are true fish; their scales are simply so small they appear smooth from a distance.",
@@ -210,6 +231,7 @@ SPECIES: list[dict] = [
     dict(name="Honey Gourami", body=(230, 160, 40), fin=(180, 100, 20), accent=(60, 30, 5),
          size=8, speed=13, sociable=False, pattern="none", aspect=1.30, fin_style="big",
          uncommon=True, layer_pref=2, sheet="HoneyGourami_Fish.png",
+         diet="Omnivore — flakes, brine shrimp, vegetables",
          fun_facts=[
              "The Honey Gourami breathes air through a labyrinth organ — it surfaces periodically for a gulp of air even in well-oxygenated water.",
              "Males build elaborate bubble nests at the surface and guard the eggs until hatching, a parenting role rare among fish.",
@@ -221,6 +243,7 @@ SPECIES: list[dict] = [
          size=5, speed=16, sociable=True,  pattern="spots", aspect=0.70, fin_style="low",
          bottom=True, crawler=True, algae_eater=True, shrimp=True, school_size=2, layer_pref=1,
          sheet="Amano_Shrimp.png",
+         diet="Omnivore — algae, biofilm, plant matter",
          fun_facts=[
              "Named after legendary aquarist Takashi Amano, this shrimp was his signature cleanup crew in world-famous planted tanks.",
              "Amano Shrimp cannot reproduce in freshwater — the larvae must drift to brackish water to survive, making captive breeding nearly impossible.",
@@ -233,6 +256,7 @@ SPECIES: list[dict] = [
          size=7, speed=8,  sociable=False, pattern="none", aspect=0.80, fin_style="low",
          bottom=True, crawler=True, algae_eater=True, crayfish=True, layer_pref=1,
          sheet="DwarfMexican_Frog.png",
+         diet="Omnivore — sinking pellets, plant matter",
          fun_facts=[
              "CPO stands for 'Cambarellus patzcuarensis orange' — a dwarf crayfish from Lake Pátzcuaro in Mexico, one of its last wild strongholds.",
              "Unlike larger crayfish, the CPO is genuinely peaceful; it lacks the aggression to harm fish much bigger than itself.",
@@ -245,6 +269,7 @@ SPECIES: list[dict] = [
     dict(name="African Dwarf Frog", body=(60, 130, 70), fin=(100, 180, 80), accent=(200, 180, 40),
          size=8, speed=18, sociable=True,  pattern="spots", aspect=1.00, fin_style="low",
          bottom=True, frog=True, uncommon=True, school_size=2, layer_pref=1, sheet="AfricanDwarf_Frog.png",
+         diet="Carnivore — bloodworms, brine shrimp, pellets",
          fun_facts=[
              "African Dwarf Frogs are fully aquatic — unlike most frogs, they cannot survive on land and must surface only to breathe air.",
              "They are nearly blind in bright light and locate food entirely by smell and the lateral-line vibration sense.",
@@ -262,8 +287,9 @@ SPECIES: list[dict] = [
     # ── Dragon Goby (rare) ────────────────────────────────────────
     # Gobioides broussonnetii. Eel-like, iridescent silvery-blue, bottom-hugging.
     dict(name="Dragon Goby", body=(140, 170, 220), fin=(100, 130, 180), accent=(200, 210, 120),
-         size=14, speed=9, sociable=False, pattern="none", aspect=0.45, fin_style="low",
+         size=14, speed=9, pattern="none", aspect=0.45, fin_style="low",
          bottom=True, algae_eater=True, lurk_castle=True, layer_pref=1, sheet="DragonGoby_Fish.png", rare=True,
+         diet="Herbivore — algae scraper, sinking pellets",
          fun_facts=[
              "Despite its fearsome mouth full of sharp teeth, the Dragon Goby feeds almost entirely on algae — those teeth are for scraping, not fighting.",
              "It is nearly blind, relying on vibration and smell to find food; it will lose out to any faster tankmate at feeding time.",
@@ -276,6 +302,7 @@ SPECIES: list[dict] = [
     dict(name="Hermit Crab", body=(200, 120, 50),  fin=(150, 80, 30),   accent=(240, 180, 100),
          size=7,  speed=5,  sociable=False, pattern="spots", aspect=1.00, fin_style="low",
          bottom=True, layer_pref=1, sheet="Hermit_Crab.png", rare=True, hermit_crab=True,
+         diet="Omnivore — algae, detritus, meaty scraps",
          fun_facts=[
              "Hermit crabs don't grow their own shells — they find and move into abandoned gastropod shells, trading up as they grow.",
              "They communicate by rubbing their shells together, a rasping sound used to negotiate shell swaps with neighbours.",
@@ -288,6 +315,7 @@ SPECIES: list[dict] = [
          size=8,  speed=4,  sociable=False, pattern="none", aspect=1.00, fin_style="low",
          bottom=True, layer_pref=1, sheet="Hermit_Crab_Rare.png",
          rare=True, super_rare=True, hermit_crab=True,
+         diet="Omnivore — algae, detritus, meaty scraps",
          fun_facts=[
              "The Moonshell Hermit’s pale, almost luminescent shell is believed to be from a species of moon snail found only in very deep water.",
              "Sightings in home aquaria are extraordinarily rare — most keepers go years without ever seeing one appear.",
@@ -300,6 +328,7 @@ SPECIES: list[dict] = [
     dict(name="Moonveil Dart", body=(180, 220, 255), fin=(220, 240, 255), accent=(100, 160, 240),
          size=5,  speed=22, sociable=True,  pattern="topband",  aspect=1.05, fin_style="normal",
          layer_pref=3, sheet="fish_new.png", rare=True,
+         diet="Omnivore — micro flakes, brine shrimp",
          fun_facts=[
              "Said to be an evolved form of reef damsels, the Moonveil Dart's silver-blue scales refract light into shifting patterns.",
              "Keepers report that this fish will rearrange small pebbles near its resting spot — a behavior science has yet to explain.",
@@ -310,6 +339,7 @@ SPECIES: list[dict] = [
     dict(name="Prism Dancer",  body=(160, 240, 200), fin=(255, 200, 80),  accent=(200, 100, 255),
          size=5,  speed=28, sociable=True,  pattern="stripes",  aspect=1.00, fin_style="normal",
          layer_pref=2, sheet="fish2_new.png", rare=True,
+         diet="Omnivore — micro flakes, small invertebrates",
          fun_facts=[
              "The Prism Dancer's scales contain microscopic crystals that produce a holographic shimmer unlike any known species.",
              "Rarely seen alone — if you spot one, there are likely five more hiding in the tank plants nearby.",
@@ -320,18 +350,20 @@ SPECIES: list[dict] = [
     dict(name="Golden Specter", body=(255, 245, 180), fin=(240, 210, 80),  accent=(200, 170, 40),
          size=8,  speed=12, sociable=False, pattern="none",     aspect=1.35, fin_style="big",
          layer_pref=2, sheet="fish3_new.png", rare=True,
+         diet="Omnivore — pellets, flakes, live foods",
          fun_facts=[
              "The Golden Specter is nearly transparent when juvenile, gaining its golden hue only at full maturity.",
              "Believed to be distantly related to the Discus and Angelfish, its exact lineage has never been confirmed.",
              "So rarely encountered that the first documented photograph was only taken in 1987.",
          ]),
 
-    # ── Crimson Fanveil (rare) ── based on ornate betta / fancy guppy ───
-    dict(name="Crimson Fanveil", body=(200, 30, 60),  fin=(255, 100, 80),  accent=(255, 220, 180),
-         size=8,  speed=11, sociable=False, pattern="stripes",  aspect=1.20, fin_style="big",
+    # ── Royal Fanveil (rare) ── based on royal angelfish ───────────
+    dict(name="Royal Fanveil", body=(200, 150, 30), fin=(255, 200, 40), accent=(60, 120, 220),
+         size=8,  speed=11, pattern="stripes",  aspect=1.20, fin_style="big",
          layer_pref=1, sheet="fish4_new.png", rare=True,
+         diet="Carnivore — bloodworms, brine shrimp",
          fun_facts=[
-             "The Crimson Fanveil's flowing fins are multi-layered tissue that can fan to three times normal width when threatened.",
+             "The Royal Fanveil's striking blue-and-gold stripes are thought to mimic toxic reef species, deterring would-be predators.",
              "Unlike most fish, it appears to recognize its own reflection and will 'display' for mirrors.",
              "Bred from crossing wild betta lineages with deep-sea specimens, the result was so striking it nearly became a new genus.",
          ]),
@@ -340,6 +372,7 @@ SPECIES: list[dict] = [
     dict(name="Stone Glider",  body=(100, 90, 75),   fin=(60, 55, 45),    accent=(140, 120, 90),
          size=12, speed=8,  sociable=False, pattern="spots",    aspect=0.65, fin_style="low",
          bottom=True, algae_eater=True, layer_pref=1, sheet="fish5_new.png", rare=True,
+         diet="Herbivore — algae, blanched veg, wafers",
          fun_facts=[
              "The Stone Glider's armored scales are among the hardest of any freshwater species — fossilized specimens were once mistaken for ancient lizard bones.",
              "Despite its imposing look, it feeds exclusively on algae and poses zero threat to other fish.",
@@ -350,8 +383,9 @@ SPECIES: list[dict] = [
     dict(name="Amber Wanderer", body=(190, 130, 50),  fin=(140, 90, 30),   accent=(220, 170, 80),
          size=7,  speed=3,  sociable=False, pattern="spots",    aspect=1.00, fin_style="low",
          crawler=True, algae_eater=True, layer_pref=1, sheet="fish6_new.png", rare=True,
+         diet="Herbivore — algae, biofilm, plant matter",
          fun_facts=[
-             "The Amber Wanderer's warm glow comes from bioluminescent bacteria living in symbiosis within its shell.",
+             "The Amber Wanderer's warm amber hue comes from bioluminescent cells distributed across its skin, glowing faintly in dim light.",
              "A single Amber Wanderer can clear a tank of algae more efficiently than three conventional cleanup fish.",
              "Ancient Chinese fishkeepers called it 'the patient one' — it is known to circle the same spot for days before moving on.",
          ]),
@@ -360,6 +394,7 @@ SPECIES: list[dict] = [
     dict(name="Pearl Rasbora", body=(80, 200, 180), fin=(255, 160, 40),  accent=(255, 230, 100),
          size=4, speed=20, sociable=True,  pattern="spots", aspect=1.00, fin_style="normal",
          layer_pref=2, sheet="Rasbora_Fish_Rare.png", rare=True,
+         diet="Omnivore — micro flakes, baby brine shrimp",
          fun_facts=[
              "Discovered in 2006 in a single pond in Myanmar, the Celestial Pearl Danio immediately caused a collecting frenzy that nearly wiped out the entire wild population.",
              "Its pearl-white spots are not painted on the scales — they are windows through semi-transparent skin revealing white fat deposits underneath.",

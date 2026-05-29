@@ -60,6 +60,12 @@ _BOWL_D = 64      # diameter of the fish bowl ellipse
 _ROW_H  = 26      # sell-list row height
 _RESTOCK_H = 28   # restock row height
 
+_SELL_SORT_MODES  = ["recent", "rarity", "species", "name", "age"]
+_SELL_SORT_LABELS = {"recent": "↓ Newest", "rarity": "★ Rarity",
+                     "species": "Species", "name": "Name A-Z", "age": "Age ↓"}
+
+_BUYBACK_MAX = 5   # max fish held in the buy-back tab (FIFO, oldest falls off)
+
 # Difficulty price multipliers
 _PRICE_MULT  = {1: 1.0, 2: 1.25, 3: 1.60, 4: 2.10, 5: 2.70}
 _RESTOCK_COST = {1: 25, 2: 40, 3: 65, 4: 90, 5: 120}
@@ -170,6 +176,14 @@ class FishStorePanel:
         self.slots: list[StoreSlot] = []
         self._restock_timer = 0.0      # seconds since last restock (counts up)
         self._scroll = 0               # sell-list scroll offset (rows)
+        self._sell_sort_mode: str = "recent"   # sell list sort mode
+        self._sell_sort_btn = pygame.Rect(0, 0, 0, 0)
+        # Buy-back tab
+        self._active_tab: str = "sell"            # "sell" | "buyback"
+        self._buyback: list[dict] = []             # [{"fish": Fish, "price": int}, ...]
+        self._scroll_bb: int = 0                   # buy-back list scroll offset
+        self._tab_rects: list[tuple[pygame.Rect, str]] = []
+        self._buyback_rows: list[tuple[pygame.Rect, dict]] = []
 
         # Rects populated in draw() for hit-testing
         self._panel_rect  = pygame.Rect(0, 0, 0, 0)
@@ -244,6 +258,44 @@ class FishStorePanel:
             self.slots[slot_idx].bought = True
 
     # ------------------------------------------------------------------ #
+    def record_sale(self, fish, price: int) -> None:
+        """Add a just-sold fish to the buy-back queue (most-recent first, capped at _BUYBACK_MAX)."""
+        self._buyback = [e for e in self._buyback if e["fish"] is not fish]
+        self._buyback.insert(0, {"fish": fish, "price": price})
+        if len(self._buyback) > _BUYBACK_MAX:
+            self._buyback = self._buyback[:_BUYBACK_MAX]
+        self._scroll_bb = 0  # always show newest entry at top
+
+    def remove_buyback(self, fish) -> None:
+        """Remove *fish* from the buy-back queue (called after a successful buy-back)."""
+        self._buyback = [e for e in self._buyback if e["fish"] is not fish]
+
+    def clear_buyback(self) -> None:
+        """Discard all buy-back entries (called on tank reset)."""
+        self._buyback = []
+        self._scroll_bb = 0
+
+    # ------------------------------------------------------------------ #
+    def _sorted_sell_fish(self, fish_list: list) -> list:
+        """Return sell list sorted by current sort mode."""
+        mode = self._sell_sort_mode
+        if mode == "rarity":
+            def _rk(f):
+                if f.sp.get("super_rare"): return 0
+                if f.sp.get("rare"):       return 1
+                if f.sp.get("uncommon"):   return 2
+                return 3
+            return sorted(fish_list, key=_rk)
+        if mode == "species":
+            return sorted(fish_list, key=lambda f: f.sp.get("name", ""))
+        if mode == "name":
+            return sorted(fish_list, key=lambda f: getattr(f, "name", ""))
+        if mode == "age":
+            return sorted(fish_list, key=lambda f: -getattr(f, "age", 0.0))
+        # "recent": newest first
+        return list(reversed(fish_list))
+
+    # ------------------------------------------------------------------ #
     def _panel_geom(self, screen_w: int, screen_h: int) -> pygame.Rect:
         pw = min(468, screen_w - PAD_L - 4)
         ph = min(460, screen_h - PAD_T - PAD_B - 4)
@@ -287,28 +339,58 @@ class FishStorePanel:
                 cost = _RESTOCK_COST.get(int(cfg.get("difficulty", 2)), 15)
                 return ("restock", cost)
 
-            # Sell rows
-            for rect, fish in self._sell_rows:
-                if rect.collidepoint(mx, my):
-                    return ("sell", fish)
+            # Tab strip
+            for tab_r, tab_key in self._tab_rects:
+                if tab_r.collidepoint(mx, my):
+                    if self._active_tab != tab_key:
+                        self._active_tab = tab_key
+                    return ("consume",)
 
-            # Scroll arrows
+            # Buy-back rows (only when buy-back tab is active)
+            if self._active_tab == "buyback":
+                for rect, entry in self._buyback_rows:
+                    if rect.collidepoint(mx, my):
+                        return ("buyback", entry["fish"], entry["price"])
+
+            # Sell rows (only when sell tab is active)
+            if self._active_tab == "sell":
+                for rect, fish in self._sell_rows:
+                    if rect.collidepoint(mx, my):
+                        return ("sell", fish)
+
+                # Sell sort button
+                if self._sell_sort_btn.collidepoint(mx, my):
+                    idx = _SELL_SORT_MODES.index(self._sell_sort_mode)
+                    self._sell_sort_mode = _SELL_SORT_MODES[(idx + 1) % len(_SELL_SORT_MODES)]
+                    self._scroll = 0
+                    return ("consume",)
+
+            # Scroll arrows (shared between both tabs)
             if self._scroll_up.collidepoint(mx, my):
-                self._scroll = max(0, self._scroll - 1)
+                if self._active_tab == "buyback":
+                    self._scroll_bb = max(0, self._scroll_bb - 1)
+                else:
+                    self._scroll = max(0, self._scroll - 1)
                 return ("consume",)
             if self._scroll_dn.collidepoint(mx, my):
-                max_scroll = max(0, len(fish_list) - self._visible_sell_rows())
-                self._scroll = min(max_scroll, self._scroll + 1)
-                return ("consume",)
-
-            if self._panel_rect.collidepoint(mx, my):
+                if self._active_tab == "buyback":
+                    max_scroll = max(0, len(self._buyback) - self._visible_sell_rows())
+                    self._scroll_bb = min(max_scroll, self._scroll_bb + 1)
+                else:
+                    max_scroll = max(0, len(fish_list) - self._visible_sell_rows())
+                    self._scroll = min(max_scroll, self._scroll + 1)
                 return ("consume",)
 
         if ev.type == pygame.MOUSEWHEEL:
             if self._panel_rect.collidepoint(pygame.mouse.get_pos()):
-                self._scroll = max(0, self._scroll - ev.y)
-                max_scroll = max(0, len(fish_list) - self._visible_sell_rows())
-                self._scroll = min(max_scroll, self._scroll)
+                if self._active_tab == "buyback":
+                    self._scroll_bb = max(0, self._scroll_bb - ev.y)
+                    max_scroll = max(0, len(self._buyback) - self._visible_sell_rows())
+                    self._scroll_bb = min(max_scroll, self._scroll_bb)
+                else:
+                    self._scroll = max(0, self._scroll - ev.y)
+                    max_scroll = max(0, len(fish_list) - self._visible_sell_rows())
+                    self._scroll = min(max_scroll, self._scroll)
                 return ("consume",)
 
         return None
@@ -450,8 +532,12 @@ class FishStorePanel:
             # ── Buy button ────────────────────────────────────────
             buy_r = pygame.Rect(sx + 6, price_y + _LABEL_H + 2, _SLOT_W - 12, _BUY_H)
             self._buy_rects.append(buy_r)
+            tank_full = len(fish_list) >= int(cfg.get("max_fish", 30))
             enough = int(cfg.get("coins", 0)) >= slot.price
-            _btn(surface, buy_r, "Buy", self.font, enabled=enough)
+            if tank_full:
+                _btn(surface, buy_r, "Tank Full", self.font, enabled=False)
+            else:
+                _btn(surface, buy_r, "Buy", self.font, enabled=enough)
 
         # ── Restock row ──────────────────────────────────────────
         restock_y = slot_y + slot_area_h + 6
@@ -476,16 +562,54 @@ class FishStorePanel:
                          (p.right - _PAD, sep_y))
         pygame.draw.line(surface, WIN_LIGHT, (p.left + _PAD, sep_y + 1),
                          (p.right - _PAD, sep_y + 1))
-        sell_hdr = self.font.render("Sell Your Fish", True, WIN_DARK)
-        surface.blit(sell_hdr, (p.left + _PAD, sep_y + 4))
+        # ── Tab strip (Sell / Buy Back) ──────────────────────────
+        _TAB_H = 18
+        tab_y  = sep_y + 3
+        _tab_sell_lbl = "Sell"
+        _bb_count = len(self._buyback)
+        _tab_bb_lbl = f"Buy Back ({_bb_count})" if _bb_count else "Buy Back"
+        _tab_sell_w = max(38, self.font.size(_tab_sell_lbl)[0] + 10)
+        _tab_bb_w   = max(60, self.font.size(_tab_bb_lbl)[0] + 10)
 
-        # ── Sell list ────────────────────────────────────────────
-        sell_list_y = sep_y + 18
+        self._tab_rects = []
+        _tx = p.left + _PAD
+        for _t_lbl, _t_key, _t_w in (
+            (_tab_sell_lbl, "sell",    _tab_sell_w),
+            (_tab_bb_lbl,   "buyback", _tab_bb_w),
+        ):
+            _tr = pygame.Rect(_tx, tab_y, _t_w, _TAB_H)
+            _active = self._active_tab == _t_key
+            # Active tab: panel colour, open at bottom; inactive: slightly darker
+            pygame.draw.rect(surface, WIN_GRAY if _active else (172, 172, 172), _tr)
+            if _active:
+                pygame.draw.line(surface, WIN_LIGHT, _tr.topleft,     (_tr.right - 1, _tr.top))
+                pygame.draw.line(surface, WIN_LIGHT, _tr.topleft,     (_tr.left, _tr.bottom - 1))
+                pygame.draw.line(surface, WIN_DARK,  (_tr.right - 1, _tr.top), (_tr.right - 1, _tr.bottom - 1))
+                # No bottom line — merges with content area
+            else:
+                pygame.draw.rect(surface, WIN_DARK, _tr, 1)
+            _tc = (0, 0, 0) if _active else WIN_MID
+            _ts = self.font.render(_t_lbl, True, _tc)
+            surface.blit(_ts, (_tr.centerx - _ts.get_width() // 2,
+                                _tr.centery - _ts.get_height() // 2))
+            self._tab_rects.append((_tr, _t_key))
+            _tx += _t_w + 2
+
+        # Sort button (sell tab only, right-aligned)
+        if self._active_tab == "sell":
+            _sort_lbl = _SELL_SORT_LABELS[self._sell_sort_mode]
+            _sort_w   = max(58, self.font.size(_sort_lbl)[0] + 10)
+            _sort_btn_r = pygame.Rect(p.right - _PAD - 16 - 4 - _sort_w, tab_y, _sort_w, _TAB_H)
+            self._sell_sort_btn = _sort_btn_r
+            _btn(surface, _sort_btn_r, _sort_lbl, self.font)
+
+        # ── List area (sell or buy-back) ─────────────────────────
+        sell_list_y = tab_y + _TAB_H + 2
         avail_h = p.bottom - sell_list_y - 4
         capacity = max(1, avail_h // _ROW_H)
         self._sell_rows_capacity = capacity
 
-        # Scroll arrows — use sprite icons when available, else plain ASCII buttons
+        # Shared scroll arrows
         arrow_x = p.right - 16
         self._scroll_up = pygame.Rect(arrow_x, sell_list_y,      14, 14)
         self._scroll_dn = pygame.Rect(arrow_x, sell_list_y + 16, 14, 14)
@@ -500,64 +624,96 @@ class FishStorePanel:
         else:
             _btn(surface, self._scroll_dn, "-", self.font)
 
-        self._sell_rows = []
-        self.tip_regions = []
-        if not fish_list:
-            no_fish = self.font.render("No fish to sell.", True, WIN_MID)
-            surface.blit(no_fish, (p.left + _PAD, sell_list_y + 4))
+        # ── Sell tab content ──────────────────────────────────────
+        if self._active_tab == "sell":
+            self._sell_rows = []
+            self.tip_regions = []
+            if not fish_list:
+                no_fish = self.font.render("No fish to sell.", True, WIN_MID)
+                surface.blit(no_fish, (p.left + _PAD, sell_list_y + 4))
+            else:
+                sorted_fish = self._sorted_sell_fish(fish_list)
+                max_scroll = max(0, len(sorted_fish) - capacity)
+                self._scroll = min(max_scroll, max(0, self._scroll))
+                visible = sorted_fish[self._scroll: self._scroll + capacity]
+                for ri, fish in enumerate(visible):
+                    ry2   = sell_list_y + ri * _ROW_H
+                    row_r = pygame.Rect(p.left + _PAD, ry2, p.w - _PAD * 2 - 22, _ROW_H)
+                    if ri % 2 == 0:
+                        pygame.draw.rect(surface, (182, 182, 190), row_r)
+                    _sp = fish.sp
+                    if _sp.get("super_rare"):   _rdot = (180, 70, 240)
+                    elif _sp.get("rare"):        _rdot = (80, 150, 255)
+                    elif _sp.get("uncommon"):    _rdot = (60, 210, 80)
+                    else:                        _rdot = (160, 160, 160)
+                    pygame.draw.circle(surface, _rdot,   (row_r.left + 8, row_r.centery), 5)
+                    pygame.draw.circle(surface, (0, 0, 0),(row_r.left + 8, row_r.centery), 5, 1)
+                    _rarity_label = ("Epic" if _sp.get("super_rare") else "Rare" if _sp.get("rare")
+                                     else "Uncommon" if _sp.get("uncommon") else "Common")
+                    self.tip_regions.append((
+                        pygame.Rect(row_r.left, row_r.centery - 8, 16, 16),
+                        f"Rarity: {_rarity_label}",
+                    ))
+                    nm    = getattr(fish, "name", "?")
+                    sp_nm = fish.sp.get("name", "?")
+                    label = f"{nm} ({sp_nm})"
+                    lbl_surf = self.font.render(label[:24], True, (0, 0, 0))
+                    surface.blit(lbl_surf, (row_r.left + 18, row_r.top + (row_r.h - lbl_surf.get_height()) // 2))
+                    price    = fish_sell_price(fish)
+                    sell_r   = pygame.Rect(row_r.right - 34, ry2 + 3, 32, _ROW_H - 6)
+                    price_s  = self.font.render(f"{price}c", True, (120, 90, 0))
+                    price_x  = sell_r.left - 4 - price_s.get_width()
+                    surface.blit(price_s, (price_x, row_r.top + (row_r.h - price_s.get_height()) // 2))
+                    _age_secs = getattr(fish, "age", 0.0)
+                    if _age_secs >= 86400:   _age_str = f"{_age_secs / 86400:.1f}d"
+                    elif _age_secs >= 3600:  _age_str = f"{_age_secs / 3600:.1f}h"
+                    else:                    _age_str = f"{int(_age_secs / 60)}m"
+                    age_s = self.font.render(_age_str, True, (80, 80, 140))
+                    age_x = price_x - 4 - age_s.get_width()
+                    surface.blit(age_s, (age_x, row_r.top + (row_r.h - age_s.get_height()) // 2))
+                    _btn(surface, sell_r, "Sell", self.font)
+                    self._sell_rows.append((sell_r, fish))
+
+        # ── Buy-back tab content ──────────────────────────────────
         else:
-            # Clamp scroll
-            max_scroll = max(0, len(fish_list) - capacity)
-            self._scroll = min(max_scroll, max(0, self._scroll))
-
-            visible = fish_list[self._scroll: self._scroll + capacity]
-            for ri, fish in enumerate(visible):
-                ry2 = sell_list_y + ri * _ROW_H
-                row_r = pygame.Rect(p.left + _PAD, ry2, p.w - _PAD * 2 - 22, _ROW_H)
-
-                # Row background (alternating)
-                if ri % 2 == 0:
-                    pygame.draw.rect(surface, (182, 182, 190), row_r)
-
-                # Rarity dot (matches Fish List panel colours)
-                _sp = fish.sp
-                if _sp.get("super_rare"):
-                    _rdot = (180, 70, 240)   # purple
-                elif _sp.get("rare"):
-                    _rdot = (80, 150, 255)   # blue
-                elif _sp.get("uncommon"):
-                    _rdot = (60, 210, 80)    # green
-                else:
-                    _rdot = (160, 160, 160)  # gray — common
-                pygame.draw.circle(surface, _rdot,
-                                   (row_r.left + 8, row_r.centery), 5)
-                pygame.draw.circle(surface, (0, 0, 0),
-                                   (row_r.left + 8, row_r.centery), 5, 1)
-                # Tooltip for rarity dot
-                _rarity_label = ("Epic" if _sp.get("super_rare")
-                                 else "Rare" if _sp.get("rare")
-                                 else "Uncommon" if _sp.get("uncommon")
-                                 else "Common")
-                self.tip_regions.append((
-                    pygame.Rect(row_r.left, row_r.centery - 8, 16, 16),
-                    f"Rarity: {_rarity_label}",
-                ))
-
-                # Name + species
-                nm = getattr(fish, "name", "?")
-                sp_name = fish.sp.get("name", "?")
-                label = f"{nm} ({sp_name})"
-                lbl_surf = self.font.render(label[:28], True, (0, 0, 0))
-                surface.blit(lbl_surf, (row_r.left + 18, row_r.top + (row_r.h - lbl_surf.get_height()) // 2))
-
-                # Sell price + button — lay out right-to-left to avoid overlap
-                price = fish_sell_price(fish)
-                sell_r = pygame.Rect(row_r.right - 34, ry2 + 3, 32, _ROW_H - 6)
-                price_s = self.font.render(f"{price}c", True, (120, 90, 0))
-                price_x = sell_r.left - 4 - price_s.get_width()
-                surface.blit(price_s, (price_x, row_r.top + (row_r.h - price_s.get_height()) // 2))
-                _btn(surface, sell_r, "Sell", self.font)
-                self._sell_rows.append((sell_r, fish))
+            self._sell_rows = []
+            self._buyback_rows = []
+            self.tip_regions = []
+            coins = int(cfg.get("coins", 0))
+            if not self._buyback:
+                msg = self.font.render("No recently sold fish.", True, WIN_MID)
+                surface.blit(msg, (p.left + _PAD, sell_list_y + 4))
+            else:
+                max_scroll = max(0, len(self._buyback) - capacity)
+                self._scroll_bb = min(max_scroll, max(0, self._scroll_bb))
+                visible = self._buyback[self._scroll_bb: self._scroll_bb + capacity]
+                for ri, entry in enumerate(visible):
+                    fish  = entry["fish"]
+                    price = entry["price"]
+                    ry2   = sell_list_y + ri * _ROW_H
+                    row_r = pygame.Rect(p.left + _PAD, ry2, p.w - _PAD * 2 - 22, _ROW_H)
+                    if ri % 2 == 0:
+                        pygame.draw.rect(surface, (182, 190, 182), row_r)
+                    _sp = fish.sp
+                    if _sp.get("super_rare"):   _rdot = (180, 70, 240)
+                    elif _sp.get("rare"):        _rdot = (80, 150, 255)
+                    elif _sp.get("uncommon"):    _rdot = (60, 210, 80)
+                    else:                        _rdot = (160, 160, 160)
+                    pygame.draw.circle(surface, _rdot,   (row_r.left + 8, row_r.centery), 5)
+                    pygame.draw.circle(surface, (0, 0, 0),(row_r.left + 8, row_r.centery), 5, 1)
+                    nm    = getattr(fish, "name", "?")
+                    sp_nm = fish.sp.get("name", "?")
+                    label = f"{nm} ({sp_nm})"
+                    lbl_surf = self.font.render(label[:24], True, (0, 0, 0))
+                    surface.blit(lbl_surf, (row_r.left + 18, row_r.top + (row_r.h - lbl_surf.get_height()) // 2))
+                    # Buy-back button + price, right-aligned
+                    enough   = coins >= price
+                    bb_r     = pygame.Rect(row_r.right - 52, ry2 + 3, 50, _ROW_H - 6)
+                    price_s  = self.font.render(f"{price}c", True, (120, 90, 0))
+                    price_x  = bb_r.left - 4 - price_s.get_width()
+                    surface.blit(price_s, (price_x, row_r.top + (row_r.h - price_s.get_height()) // 2))
+                    _btn(surface, bb_r, "Buy Back", self.font, enabled=enough)
+                    self._buyback_rows.append((bb_r, entry))
 
         # ── Panel border clamp line ──────────────────────────────
         pygame.draw.rect(surface, WIN_DARK, p, 1)

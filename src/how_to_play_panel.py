@@ -925,8 +925,9 @@ class HowToPlayPanel:
             self._close_press = self._back_press = self._next_press = False
 
         if ev.type == pygame.MOUSEMOTION and self._dragging:
-            nx = ev.pos[0] - self._drag_offset[0]
-            ny = ev.pos[1] - self._drag_offset[1]
+            sw, sh = pygame.display.get_surface().get_size()
+            nx = max(0, min(sw - self._rect.w, ev.pos[0] - self._drag_offset[0]))
+            ny = max(0, min(sh - self._rect.h, ev.pos[1] - self._drag_offset[1]))
             self._rect.topleft = (nx, ny)
             self._layout()
 

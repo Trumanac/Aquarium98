@@ -1,0 +1,70 @@
+name: Build Web (pygbag)
+
+on:
+  workflow_dispatch:          # manual trigger only — web builds are opt-in
+  push:
+    branches: [main, master]
+    paths:
+      - 'web_main.py'
+      - 'web/**'
+      - 'aquarium.py'
+      - 'src/**'
+      - 'assets/**'
+      - '.github/workflows/build-web.yml'
+
+permissions:
+  contents: read
+  pages:    write
+  id-token: write
+
+# Only one deployment at a time; cancel in-progress runs on the same branch.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build with pygbag
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so git describe --tags resolves correctly
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements-web.txt Pillow
+
+      - name: Build
+        # pygbag writes the finished site into build/web/
+        run: python -m pygbag --build --app_name "Aquarium 98" web_main.py
+
+      - name: Inject PWA (manifest + service worker + icons)
+        run: |
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
+          python web/pwa_inject.py --version "$VERSION"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

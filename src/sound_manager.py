@@ -18,7 +18,7 @@ Sound files expected under assets/audio/:
 
 Usage::
     snd = SoundManager()           # call after pygame.init()
-    snd.set_volume(0.7)            # 0.0 – 1.0  (default 0.7)
+    snd.set_volume(0.35)           # 0.0 – 1.0  (default 0.35)
     snd.set_muted(True)            # silence everything
     snd.play_coin_chest()          # treasure chest opened
     snd.play_single_coin()         # one coin earned
@@ -41,6 +41,10 @@ _AUDIO_DIR = Path(__file__).resolve().parent.parent / "assets" / "audio"
 _SPLASH_MIN = 900.0
 _SPLASH_MAX = 3600.0
 
+# The ChestCreak source file is mixed louder than the other SFX; apply a
+# relative multiplier so it sits at the same perceived level as the rest.
+_CHEST_CREAK_REL = 0.55
+
 
 def _load(path: Path) -> pygame.mixer.Sound | None:
     """Load a sound file, returning None on any error."""
@@ -56,7 +60,7 @@ class SoundManager:
 
     def __init__(self) -> None:
         self._ok             = False
-        self._volume         = 0.7    # 0.0 – 1.0
+        self._volume         = 0.35   # 0.0 – 1.0
         self._muted          = False
         self._coin_chest:    pygame.mixer.Sound | None = None
         self._single_coin:   pygame.mixer.Sound | None = None
@@ -138,6 +142,10 @@ class SoundManager:
         effective = 0.0 if self._muted else self._volume
         for s in self._all_sounds:
             s.set_volume(effective)
+        # Override chest creak with a lower relative level — its source file
+        # is mixed louder than the other SFX so it needs a small correction.
+        if self._chest_creak is not None:
+            self._chest_creak.set_volume(effective * _CHEST_CREAK_REL)
 
     def _schedule_next_splash(self) -> None:
         self._next_splash = time.monotonic() + random.uniform(_SPLASH_MIN, _SPLASH_MAX)

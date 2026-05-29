@@ -69,8 +69,8 @@ class SettingsDialog:
         self.update_info: dict = {}   # populated by aquarium.py from update_check.get_result()
         self.sliders: list[_Slider] = [
             _Slider("opacity",       "Window Opacity",  0.30, 1.00, 0.05),
-            _Slider("sound_volume",  "Sound Volume",    0.00, 1.00, 0.05),
-            _Slider("music_volume",  "Music Volume",    0.00, 1.00, 0.05),
+            _Slider("sound_volume",  "Sound Volume",    0.00, 1.00, 0.01),
+            _Slider("music_volume",  "Music Volume",    0.00, 1.00, 0.01),
             _Slider("max_bubbles",   "Max Bubbles",     1,    30,   1,   integer=True),
             _Slider("max_fish",      "Max Fish",        4,    30,   1,   integer=True),
             _Slider("castle_choice", "Castle Style",    1,    5,    1,   integer=True),
@@ -120,7 +120,7 @@ class SettingsDialog:
         # already-saved preference is respected.
         self._apply_max_fish_cap(default_to_max=False)
         sw, sh = screen_size
-        pw, ph = min(500, sw - 20), min(520, sh - 10)
+        pw, ph = min(500, sw - 20), min(460, sh - 10)
         self._panel = pygame.Rect((sw - pw) // 2, (sh - ph) // 2, pw, ph)
         self._layout()
         self.visible = True
