@@ -1,7 +1,7 @@
 name: Build Web (pygbag)
 
 on:
-  workflow_dispatch:          # manual trigger only — web builds are opt-in
+  workflow_dispatch:          # manual trigger
   push:
     branches: [main, master]
     paths:
