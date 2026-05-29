@@ -202,7 +202,9 @@ class SettingsDialog:
                     return "install_update"
                 if dl in ("idle", "failed"):
                     ui = self.update_info
-                    if not ui:  # check still pending
+                    if ui.get("checking"):  # request already in flight — ignore click
+                        return None
+                    if not ui or ui.get("check_failed"):
                         return "check_updates"
                     if ui.get("newer"):
                         return "download_update"
@@ -428,6 +430,14 @@ class SettingsDialog:
                 clickable = True
             elif dl_status == "failed":
                 ver_text = "Download failed — Retry"
+                ver_col  = (160, 0, 0)
+                clickable = True
+            elif ui.get("checking"):
+                ver_text = "Checking for updates..."
+                ver_col  = (80, 80, 80)
+                clickable = False
+            elif ui.get("check_failed"):
+                ver_text = "Check failed — Retry"
                 ver_col  = (160, 0, 0)
                 clickable = True
             elif ui.get("newer"):

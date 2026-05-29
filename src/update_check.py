@@ -39,6 +39,7 @@ _DL_BASE       = "https://github.com/trumanac/Aquarium98/releases/download"
 
 _result: dict = {}
 _lock = threading.Lock()
+_checking: bool = False
 
 # ---------------------------------------------------------------------------
 # Version check
@@ -46,6 +47,9 @@ _lock = threading.Lock()
 
 def start(current_version: str) -> None:
     """Kick off a background version check.  Safe to call multiple times."""
+    global _checking
+    with _lock:
+        _checking = True
     t = threading.Thread(
         target=_worker,
         args=(current_version,),
@@ -60,19 +64,21 @@ def recheck(current_version: str) -> None:
     global _result
     with _lock:
         _result = {}
-    start(current_version)
+    start(current_version)  # start() sets _checking = True before the thread launches
 
 
 def get_result() -> dict:
     """Return a copy of the check result.
 
     Keys (only present once the check completes):
-      ``latest`` — latest release tag without leading 'v', e.g. ``"1.2.0"``
-      ``url``    — HTML URL of the release page
-      ``newer``  — ``True`` if the latest release is newer than *current_version*
+      ``latest``        — latest release tag without leading 'v', e.g. ``"1.2.0"``
+      ``url``           — HTML URL of the release page
+      ``newer``         — ``True`` if the latest release is newer than *current_version*
+      ``checking``      — ``True`` while the background request is in flight
+      ``check_failed``  — ``True`` if the last check request failed (network/API error)
     """
     with _lock:
-        return dict(_result)
+        return {**_result, "checking": _checking}
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +206,7 @@ def _parse_version(v: str) -> tuple[int, ...]:
 
 
 def _worker(current_version: str) -> None:
+    global _checking
     try:
         req = urllib.request.Request(
             _RELEASES_URL,
@@ -208,14 +215,19 @@ def _worker(current_version: str) -> None:
                 "Accept": "application/vnd.github+json",
             },
         )
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        with urllib.request.urlopen(req, timeout=12) as resp:
             data = json.loads(resp.read())
         latest = data.get("tag_name", "").lstrip("v")
         url    = data.get("html_url", _GITHUB_PAGE)
         newer  = _parse_version(latest) > _parse_version(current_version)
         with _lock:
-            _result["latest"] = latest
-            _result["url"]    = url
-            _result["newer"]  = newer
-    except Exception:  # noqa: BLE001 — truly want silent failure here
-        pass
+            _result["latest"]       = latest
+            _result["url"]          = url
+            _result["newer"]        = newer
+            _result["check_failed"] = False
+    except Exception:  # noqa: BLE001 — must never affect normal app behaviour
+        with _lock:
+            _result["check_failed"] = True
+    finally:
+        with _lock:
+            _checking = False
