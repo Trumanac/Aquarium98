@@ -42,6 +42,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-web.txt Pillow
 
+      - name: Convert MP3 → OGG for web (pygbag does not allow MP3)
+        run: |
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          for f in assets/audio/*.mp3; do
+            ffmpeg -i "$f" "${f%.mp3}.ogg" -y -loglevel error
+            rm "$f"
+          done
+          # Patch .mp3 extension references in Python source to .ogg
+          find src -name "*.py" -exec sed -i 's/\.mp3"/\.ogg"/g' {} +
+          find . -maxdepth 1 -name "*.py" -exec sed -i 's/\.mp3"/\.ogg"/g' {} +
+
       - name: Build
         # pygbag writes the finished site into build/web/
         run: python -m pygbag --build --app_name "Aquarium 98" web_main.py
