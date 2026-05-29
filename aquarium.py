@@ -940,6 +940,26 @@ async def main() -> int:
                     else:
                         result = settings.handle_event(ev)
                         if result == "save":
+                            # Check if the new difficulty would require fewer fish
+                            # than are currently alive — block the save and warn.
+                            new_diff = int(settings.cfg_edit.get("difficulty", 2))
+                            old_diff = int(cfg.get("difficulty", 2))
+                            if new_diff != old_diff:
+                                new_max = cfg_mod.DIFFICULTY_PRESETS[new_diff]["max_fish"]
+                                if len(fish_list) > new_max:
+                                    diff_name = cfg_mod.DIFFICULTY_NAMES[new_diff]
+                                    info_dlg.open(
+                                        "Difficulty Change Blocked",
+                                        f"{diff_name} difficulty allows at most {new_max} fish, "
+                                        f"but your tank currently has {len(fish_list)}. "
+                                        f"Reset your tank first (Settings → Reset Tank), "
+                                        f"then change difficulty.",
+                                        *surface.get_size(),
+                                    )
+                                    # Revert the difficulty slider back to current value
+                                    settings.cfg_edit["difficulty"] = old_diff
+                                    settings.cfg_edit["max_fish"]   = cfg.get("max_fish", 25)
+                                    continue
                             # Sync live music state into the dialog snapshot before
                             # committing so the music widget can't revert volume/mute
                             # to a stale value captured when the dialog was opened.
