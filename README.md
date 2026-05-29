@@ -6,6 +6,7 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/trumanac/Aquarium98?label=latest&color=brightgreen&style=flat-square)](https://github.com/trumanac/Aquarium98/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/trumanac/Aquarium98/total?color=blue&style=flat-square)](https://github.com/trumanac/Aquarium98/releases)
+[![Play in Browser](https://img.shields.io/badge/play-web-blue.svg?style=flat-square&logo=googlechrome&logoColor=white)](https://trumanac.github.io/Aquarium98/)
 [![itch.io](https://img.shields.io/badge/itch.io-superbirdy-fa5c5c.svg?style=flat-square&logo=itch.io&logoColor=white)](https://superbirdy.itch.io)
 [![License: Personal Use](https://img.shields.io/badge/License-Personal%20Use-blue.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square)](#download)
@@ -28,6 +29,7 @@ A retro Windows 98-styled desktop aquarium widget — a living, breathing fish t
 
 | Platform | One-click download | Notes |
 |----------|--------------------|-------|
+| **Web (any browser)** | [▶ Play in Browser](https://trumanac.github.io/Aquarium98/) | No install — runs right in your browser |
 | **Windows 10 / 11** (64-bit) | [⬇ Aquarium98-Setup.exe](https://github.com/trumanac/Aquarium98/releases/latest/download/Aquarium98-Setup.exe) | Installer — no admin required |
 | **macOS** 10.15 Catalina+ | [⬇ Aquarium98.dmg](https://github.com/trumanac/Aquarium98/releases/latest/download/Aquarium98.dmg) | Open DMG, drag to Applications |
 | **Linux** (x86\_64) | [⬇ Aquarium98-x86\_64.AppImage](https://github.com/trumanac/Aquarium98/releases/latest/download/Aquarium98-x86_64.AppImage) | Portable — no install needed |
@@ -191,6 +193,7 @@ Your first-ever tank and any full reset pick a fresh castle/decor from 5 options
 | Show Fish Moods | Show a colour-coded mood dot above each fish |
 | Mute Sounds | Toggle all sound effects on/off |
 | Opacity | Set window transparency (100% – 30%) |
+| How to Play... | Open the illustrated in-game guide |
 | About Aquarium 98 | Version and credits |
 | Settings | Full settings panel |
 | Minimize to Tray | Send to system tray |

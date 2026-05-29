@@ -44,6 +44,7 @@ jobs:
 
       - name: Convert MP3 → OGG for web (pygbag does not allow MP3)
         run: |
+          sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends ffmpeg
           for f in assets/audio/*.mp3; do
             ffmpeg -i "$f" "${f%.mp3}.ogg" -y -loglevel error
