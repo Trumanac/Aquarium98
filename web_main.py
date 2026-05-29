@@ -84,12 +84,61 @@ _icon_gen_mod.ensure_icons = lambda: None
 sys.modules["src.icon_gen"] = _icon_gen_mod
 
 # ── import and run the game ───────────────────────────────────────────────────
-import aquarium as _game  # noqa: E402
+try:
+    import aquarium as _game  # noqa: E402
+    _IMPORT_ERROR: Exception | None = None
+except Exception as _exc:  # noqa: BLE001
+    import traceback as _tb
+    _IMPORT_ERROR = _exc
+    print("FATAL: failed to import aquarium:", _exc)
+    print(_tb.format_exc())
+    _game = None  # type: ignore[assignment]
 
 
 # pygbag requires a callable named `main` in the entry file.
 async def main() -> int:
-    return await _game.main()
+    if _game is None:
+        # Display the import error on the pygame canvas so it is visible.
+        import traceback as _tb
+        _render_fatal(type(_IMPORT_ERROR).__name__ + ": " + str(_IMPORT_ERROR))
+        while True:
+            await asyncio.sleep(1)
+
+    try:
+        return await _game.main()
+    except Exception as _exc:  # noqa: BLE001
+        import traceback as _tb
+        msg = _tb.format_exc()
+        print("FATAL:", msg)
+        _render_fatal(msg)
+        while True:
+            await asyncio.sleep(1)
+
+
+def _render_fatal(message: str) -> None:
+    """Display a fatal-error traceback on the pygame canvas."""
+    try:
+        import pygame as _pg
+        _pg.font.init()
+        surf = _pg.display.get_surface()
+        if surf is None:
+            surf = _pg.display.set_mode((800, 480))
+        surf.fill((0, 0, 0))
+        try:
+            font = _pg.font.Font(
+                str(ROOT / "assets" / "fonts" / "MSW98UI-Regular.otf"), 14
+            )
+        except Exception:  # noqa: BLE001
+            font = _pg.font.SysFont("monospace", 13)
+        lines = message.splitlines()
+        y = 8
+        for line in lines[:30]:
+            rendered = font.render(line[:100], True, (255, 80, 80))
+            surf.blit(rendered, (8, y))
+            y += 18
+        _pg.display.flip()
+    except Exception:  # noqa: BLE001
+        pass  # if even this fails, we've already printed to stdout
 
 
 asyncio.run(main())

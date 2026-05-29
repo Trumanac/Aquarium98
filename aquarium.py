@@ -99,15 +99,23 @@ IS_WINDOWS = platform.system() == "Windows"
 
 
 def _setup_logging() -> None:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    logfile = LOG_DIR / "aquarium.log"
-    rotating = logging.handlers.RotatingFileHandler(
-        logfile, maxBytes=500_000, backupCount=3, encoding="utf-8"
-    )
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    # File logging is not available in WASM (Emscripten virtual FS has no
+    # persistent home dir suitable for RotatingFileHandler).
+    if platform.system() != "Emscripten":
+        try:
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            logfile = LOG_DIR / "aquarium.log"
+            rotating = logging.handlers.RotatingFileHandler(
+                logfile, maxBytes=500_000, backupCount=3, encoding="utf-8"
+            )
+            handlers.append(rotating)
+        except OSError:
+            pass  # non-fatal: fall back to stdout-only logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[rotating, logging.StreamHandler(sys.stdout)],
+        handlers=handlers,
         force=True,
     )
 
