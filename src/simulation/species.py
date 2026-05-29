@@ -278,6 +278,39 @@ SPECIES: list[dict] = [
              "Despite having lungs, they absorb most of their oxygen through thin, permeable skin — which is why water quality matters so much.",
          ]),
 
+    # ── Green Sea Turtle ──────────────────────────────────────────────────
+    dict(name="Sea Turtle",   body=(100, 130, 80),  fin=(80, 110, 60),   accent=(160, 170, 90),
+         size=14, speed=10, sociable=False, pattern="none", aspect=1.30, fin_style="low",
+         uncommon=True, layer_pref=2, sheet="Water_Turtle.png",
+         diet="Herbivore — sea grass, jellyfish",
+         fun_facts=[
+             "Green sea turtles navigate using the Earth's magnetic field, returning to the exact beach where they hatched decades later.",
+             "They are one of the oldest reptile groups on Earth — their relatives have been swimming the oceans for over 100 million years.",
+             "Despite living underwater, sea turtles hold their breath for up to 7 hours while resting, slowing their heart to one beat per minute.",
+         ]),
+
+    # ── Red-Eared Slider ──────────────────────────────────────────────────
+    dict(name="Red-ear Slider", body=(55, 90, 50), fin=(45, 70, 35),    accent=(210, 45, 45),
+         size=11, speed=8,  sociable=True,  pattern="stripes", aspect=1.25, fin_style="low",
+         bottom=True, uncommon=True, school_size=2, layer_pref=1, sheet="RedEaredSlider_Turtle.png",
+         diet="Omnivore — leafy greens, pellets, small fish",
+         fun_facts=[
+             "The red patches on a slider's head are not ears at all — they are large tympanic membranes (eardrums) just behind the eyes.",
+             "Red-eared sliders can survive frozen winters by absorbing oxygen directly through patches of skin near their tail.",
+             "They are the most traded reptile in the world — tens of millions have been exported from American breeding farms since the 1950s.",
+         ]),
+
+    # ── Leopard Frog ──────────────────────────────────────────────────────
+    dict(name="Leopard Frog",  body=(80, 145, 65),  fin=(100, 165, 75),  accent=(60, 100, 40),
+         size=9,  speed=17, sociable=True,  pattern="spots", aspect=1.10, fin_style="low",
+         bottom=True, frog=True, uncommon=True, school_size=2, layer_pref=1, sheet="Frog2.png",
+         diet="Carnivore — insects, worms, small crustaceans",
+         fun_facts=[
+             "The Leopard Frog's spotted pattern varies so much that no two individuals look identical — it functions like a fingerprint.",
+             "They can leap 10 times their own body length in a single jump, one of the highest body-length ratios of any amphibian.",
+             "Leopard Frogs hibernate on the bottom of ponds in winter, absorbing enough oxygen through their skin to survive without surfacing.",
+         ]),
+
     # ══════════════════════════════════════════════════════════════════════
     # RARE SPECIES — fictional names, based loosely on real fish.
     # Spawned with low probability; at most MAX_RARE_IN_TANK in tank at once.
@@ -322,6 +355,32 @@ SPECIES: list[dict] = [
              "Its lavender-tinted claws are thought to be an adaptation for low-light deep-sea environments; it is most active in the dark.",
              "Unlike common hermit crabs, the Moonshell Hermit rarely trades shells — it seems to form an unusual bond with its current home.",
              "Ancient Pacific islanders considered the pale hermit crab a symbol of patience and good fortune; finding one was considered a blessing.",
+         ]),
+
+    # ── Azure Dart Frog (super-rare / epic) ──────────────────────────────
+    dict(name="Azure Dart Frog", body=(80, 80, 240),  fin=(200, 60, 160),  accent=(240, 130, 50),
+         size=7,  speed=20, sociable=False, pattern="spots", aspect=1.05, fin_style="low",
+         bottom=True, frog=True, layer_pref=1, sheet="Frog_Rare.png",
+         rare=True, super_rare=True,
+         diet="Carnivore — live insects, micro invertebrates",
+         fun_facts=[
+             "The Azure Dart Frog's blinding blue and magenta coloration is an honest signal — the brighter the colors, the more toxic the individual.",
+             "Its skin toxins are not self-produced; they come entirely from a diet of specific rainforest ants and mites, making captive frogs harmless.",
+             "A single wild Dart Frog carries enough alkaloid toxins to deter a jaguar. Amazonian hunters have used their secretions on blowgun darts for centuries.",
+             "Dart Frogs are devoted parents: the male carries hatched tadpoles on his back, transporting each one to a separate water-filled bromeliad.",
+         ]),
+
+    # ── Aurora Leatherback (super-rare / epic) ────────────────────────────
+    dict(name="Aurora Leatherback", body=(60, 200, 180), fin=(40, 160, 140), accent=(200, 235, 100),
+         size=15, speed=9,  sociable=False, pattern="none", aspect=1.35, fin_style="low",
+         layer_pref=2, sheet="Water_Turtle_Rare.png",
+         rare=True, super_rare=True,
+         diet="Herbivore — sea grass, rare jellyfish",
+         fun_facts=[
+             "The Aurora Leatherback's iridescent shell is caused by nano-scale crystalline structures in its scutes — not pigment at all.",
+             "It is believed to be one of the deepest-diving marine reptiles ever recorded, capable of reaching 4,000 feet below the surface.",
+             "Scientists estimate only a few dozen individuals exist in the wild; those lucky enough to see one call it a once-in-a-lifetime encounter.",
+             "The bioluminescent shimmer along its flippers pulses slowly in the dark — researchers theorise it is used for deep-sea communication.",
          ]),
 
     # ── Moonveil Dart (rare) ── based on reef damsels / chromis viridis ──
