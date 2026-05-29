@@ -2017,12 +2017,13 @@ async def main() -> int:
         # CrashDialog uses a synchronous blocking event loop which deadlocks
         # the browser in WASM.  Skip it there — the traceback is already in
         # the log file and console.
-        if platform.system() != "Emscripten":
-            try:
-                dlg = CrashDialog(tb_text, log_path)
-                dlg.run()
-            except Exception:  # noqa: BLE001 — crash dialog itself failed; just exit
-                pass
+        if platform.system() == "Emscripten":
+            raise  # propagate to web_main.py which renders the traceback on-canvas
+        try:
+            dlg = CrashDialog(tb_text, log_path)
+            dlg.run()
+        except Exception:  # noqa: BLE001 — crash dialog itself failed; just exit
+            pass
         return 1
     finally:
         _release_lock()
