@@ -12,6 +12,9 @@ on:
       - 'assets/**'
       - '.github/workflows/build-web.yml'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 permissions:
   contents: read
   pages:    write

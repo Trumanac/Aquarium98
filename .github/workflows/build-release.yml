@@ -15,6 +15,7 @@ on:
 # Derive version from tag name or manual input
 env:
   VERSION: ${{ github.event_name == 'push' && github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Windows build — produces Aquarium98-Setup-X.Y.Z.exe
@@ -219,8 +220,7 @@ jobs:
           # Write release body (echo avoids heredoc/backtick escaping issues)
           {
             echo "| Platform | Download |"
-            echo "|----------|----------|"
-            echo "| **Windows 10/11** (64-bit) | [Aquarium98-Setup.exe](https://github.com/${REPO}/releases/latest/download/Aquarium98-Setup.exe) |"
+            echo "|----------|----------|"            echo "| **Web (any browser)** | [▶ Play in Browser](https://trumanac.github.io/Aquarium98/) |"            echo "| **Windows 10/11** (64-bit) | [Aquarium98-Setup.exe](https://github.com/${REPO}/releases/latest/download/Aquarium98-Setup.exe) |"
             echo "| **macOS** 10.15+ | [Aquarium98.dmg](https://github.com/${REPO}/releases/latest/download/Aquarium98.dmg) |"
             echo "| **Linux** (x86_64) | [Aquarium98-x86_64.AppImage](https://github.com/${REPO}/releases/latest/download/Aquarium98-x86_64.AppImage) |"
             echo ""
