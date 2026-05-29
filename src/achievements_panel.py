@@ -53,12 +53,12 @@ ACHIEVEMENTS: list[dict] = [
     {"id": "early_bird",     "name": "Early Bird",     "desc": "Open the aquarium before 7 AM."},
     {"id": "overcrowded",    "name": "Overcrowded!",   "desc": "Have 10 or more fish in the tank at once."},
     {"id": "long_haul",      "name": "Long Haul",      "desc": "Keep a fish alive for 14 days."},
-    # --- easter eggs ---
-    {"id": "konami_code",      "name": "The Code",           "desc": "Enter the Konami code. \u2191\u2191\u2193\u2193\u2190\u2192\u2190\u2192BA"},
-    {"id": "dvd_mode",         "name": "Knock Knock",        "desc": "Click the title bar 5 times within 30 seconds."},
-    {"id": "found_nemo",       "name": "Found Nemo",         "desc": "Give one of your fish the name Nemo."},
-    {"id": "were_the_beatles", "name": "Were the Beatles?",  "desc": "Have a John, a Paul, a George, and a Ringo in your tank."},
-    {"id": "empty_graveyard",  "name": "Too Soon",           "desc": "Right-click the Graveyard before any fish have died."},
+    # --- easter eggs (hidden until unlocked) ---
+    {"id": "konami_code",      "name": "The Code",           "desc": "Enter the Konami code. \u2191\u2191\u2193\u2193\u2190\u2192\u2190\u2192BA",       "easter_egg": True},
+    {"id": "dvd_mode",         "name": "Knock Knock",        "desc": "Click the title bar 5 times within 30 seconds.",                             "easter_egg": True},
+    {"id": "found_nemo",       "name": "Found Nemo",         "desc": "Give one of your fish the name Nemo.",                                        "easter_egg": True},
+    {"id": "were_the_beatles", "name": "Were the Beatles?",  "desc": "Have a John, a Paul, a George, and a Ringo in your tank.",                  "easter_egg": True},
+    {"id": "empty_graveyard",  "name": "Too Soon",           "desc": "Right-click the Graveyard before any fish have died.",                       "easter_egg": True},
 ]
 
 
@@ -334,9 +334,14 @@ class AchievementsPanel:
             if done:
                 name_s = self.font.render(a["name"], True, (20, 20, 80))
                 desc_s = self.font.render(a["desc"], True, (80, 80, 100))
-            else:
+            elif a.get("easter_egg"):
+                # Easter eggs stay fully hidden to preserve the surprise
                 name_s = self.font.render("???", True, COL_LOCK)
-                desc_s = self.font.render("Locked", True, COL_LOCK)
+                desc_s = self.font.render("Secret achievement", True, COL_LOCK)
+            else:
+                # Show the name so players know what to aim for
+                name_s = self.font.render(a["name"], True, COL_LOCK)
+                desc_s = self.font.render("???", True, COL_LOCK)
 
             nx = px + _PAD + 14
             surface.blit(name_s, (nx, ry + 2))
