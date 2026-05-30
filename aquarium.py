@@ -508,7 +508,7 @@ async def main() -> int:
         # ────────────────────────────────────────────────────────────────
         # Warning state — prevents repeated notifications for the same condition
         _algae_danger_warned: bool = False
-        _health_warned: set = set()   # Fish objects already warned this episode (avoids id() GC collision)
+        _health_warned: set[int] = set()   # id(f) for fish already warned this episode
         # Cache encyclopedia_seen count — recomputed only when seen_species length changes
         _seen_count_cache: int = -1
         _encyclopedia_seen: int = 0
@@ -1023,7 +1023,7 @@ async def main() -> int:
                             scy = tr.top  + int(getattr(sold_fish, "y", tr.h // 2))
                             fish_roster.invalidate_thumb(sold_fish)
                             fish_list.remove(sold_fish)
-                            _health_warned.discard(sold_fish)
+                            _health_warned.discard(id(sold_fish))
                             fish_store.record_sale(sold_fish, price_sell)
                             earn_coins(cfg, price_sell, float(scx), float(scy),
                                        coin_popups, log_event,
@@ -1186,7 +1186,7 @@ async def main() -> int:
                                 scy = tr.top  + int(getattr(fish_to_sell, 'y', tr.h // 2))
                                 fish_roster.invalidate_thumb(fish_to_sell)
                                 fish_list.remove(fish_to_sell)
-                                _health_warned.discard(fish_to_sell)
+                                _health_warned.discard(id(fish_to_sell))
                                 if fish_info.visible and fish_info.fish is fish_to_sell:
                                     fish_info.close()
                                 fish_store.record_sale(fish_to_sell, price_sell)
@@ -1286,7 +1286,7 @@ async def main() -> int:
                             scy = tr.top  + int(getattr(target_fish, "y", tr.h // 2))
                             fish_roster.invalidate_thumb(target_fish)
                             fish_list.remove(target_fish)
-                            _health_warned.discard(target_fish)
+                            _health_warned.discard(id(target_fish))
                             fish_store.record_sale(target_fish, price_sell)
                             earn_coins(cfg, price_sell, float(scx), float(scy),
                                        coin_popups, log_event,
@@ -1759,7 +1759,7 @@ async def main() -> int:
                                   "death")
                         log_death(cfg, fd)
                         fish_roster.invalidate_thumb(fd)
-                        _health_warned.discard(fd)
+                        _health_warned.discard(id(fd))
                         # Close the fish-info panel when the fish it is
                         # displaying has just died so the panel never shows
                         # stale data for a culled fish.
@@ -1796,12 +1796,13 @@ async def main() -> int:
 
                     # ---- Critical health warning (once per fish per episode) ----
                     for _f in fish_list:
-                        if _f.health < 0.20 and _f not in _health_warned:
-                            _health_warned.add(_f)
+                        _fid = id(_f)
+                        if _f.health < 0.20 and _fid not in _health_warned:
+                            _health_warned.add(_fid)
                             set_status(
                                 f"{_f.name} is critically ill! ({int(_f.health * 100)}% HP)", 6.0)
-                        elif _f.health >= 0.40 and _f in _health_warned:
-                            _health_warned.discard(_f)
+                        elif _f.health >= 0.40 and _fid in _health_warned:
+                            _health_warned.discard(_fid)
 
                 # If the step cap was hit (window was hidden/minimized for a long
                 # time), discard the leftover debt to prevent fast-forward catch-up.
