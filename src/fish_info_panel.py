@@ -188,6 +188,38 @@ class FishInfoPanel:
         self._layout()
         self.visible = True
 
+    def swap_fish(self, fish) -> None:
+        """Switch to a different fish without moving the panel window."""
+        if not self.visible:
+            return
+        self.fish          = fish
+        self.last_fish     = fish
+        self._rename       = fish.name
+        self._rename_active = False
+        self._thumb        = None
+        self._thumb_fid    = -1
+        self._title_surf   = None  # invalidate gradient cache
+        facts = fish.sp.get("fun_facts", [])
+        self._fact = random.choice(facts) if facts else "A remarkable fish."
+        _wrap_w = PW - _PAD * 2
+        self._fact_lines        = _wrap(self.font, self._fact, _wrap_w)[:4]
+        self._personality_lines = _wrap(self.font, fish.personality_desc, _wrap_w)[:3]
+        # Recompute height to fit new fish's content, keep current topleft
+        fh_d = self.font.get_height()
+        _diet_extra    = (fh_d + 2) if fish.sp.get("diet") else 0
+        _lineage_extra = (fh_d + 2) if fish.born_from else 0
+        _rc_h   = 3 * fh_d + 31 + _diet_extra + _lineage_extra
+        _top_h  = max(_THUMB_H, _rc_h)
+        _cdyn   = _top_h + 5
+        _cdyn  += 4 + (fh_d + 2) + len(self._fact_lines) * (fh_d + 1)
+        _cdyn  += 3 + 4 + (fh_d + 2) + len(self._personality_lines) * (fh_d + 1)
+        _stats_h = _PAD + 22 + 4 + fh_d + 3 + 11 + 3 + 11 + 4
+        ph_dyn = max(280, 25 + _cdyn + _stats_h + 8)
+        self._rect = pygame.Rect(self._rect.left,
+                                 max(0, min(self._screen_h - ph_dyn, self._rect.top)),
+                                 PW, ph_dyn)
+        self._layout()
+
     def close(self) -> None:
         self.visible   = False
         self.fish      = None

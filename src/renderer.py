@@ -641,8 +641,9 @@ class Renderer:
         # same angle each frame, so the result is cached here.
         self._rotated_grazer_cache: dict[tuple, pygame.Surface] = {}
         # Fish highlight: pulsing circle drawn around a fish when its profile is opened
-        self._highlight_fish  = None
-        self._highlight_until = 0   # pygame.time.get_ticks() expiry ms
+        self._highlight_fish   = None
+        self._highlight_until  = 0   # pygame.time.get_ticks() expiry ms
+        self._highlight_pinned = False  # True while panel/roster is open for this fish
         # Pre-tinted animation frames (built in _rebuild_decor, avoids per-frame copy+fill)
         self._surface_ripples_tinted: list[pygame.Surface] = []
         self._caustics_tinted:        list[pygame.Surface] = []
@@ -664,8 +665,19 @@ class Renderer:
 
     def set_highlight(self, fish, duration_ms: int = 4000) -> None:
         """Highlight *fish* with a pulsing ring for *duration_ms* milliseconds."""
-        self._highlight_fish  = fish
-        self._highlight_until = pygame.time.get_ticks() + duration_ms
+        self._highlight_fish   = fish
+        self._highlight_until  = pygame.time.get_ticks() + duration_ms
+        self._highlight_pinned = False
+
+    def pin_highlight(self, fish) -> None:
+        """Keep the highlight ring on *fish* until clear_highlight() is called."""
+        self._highlight_fish   = fish
+        self._highlight_pinned = True
+
+    def clear_highlight(self) -> None:
+        """Remove any active highlight."""
+        self._highlight_fish   = None
+        self._highlight_pinned = False
 
     # -----------------------------------------------------------------------
     def compute_tank_rect(self) -> pygame.Rect:
@@ -1226,7 +1238,7 @@ class Renderer:
         # Pulsing highlight ring: shown when this fish's profile was just opened
         if f is self._highlight_fish:
             _now = pygame.time.get_ticks()
-            if _now < self._highlight_until:
+            if self._highlight_pinned or _now < self._highlight_until:
                 _t      = (_now % 700) / 700.0
                 _base_r = max(sw, sh) // 2 + 3
                 _pr     = _base_r + int(6 * abs(math.sin(math.pi * _t)))

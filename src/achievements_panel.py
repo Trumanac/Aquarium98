@@ -213,6 +213,17 @@ def check_achievements(cfg: dict, fish_list: list) -> list[str]:
             _try("super_rare")
             break
 
+    # Easter egg: Found Nemo — any living fish custom-named "Nemo"
+    for f in fish_list:
+        if getattr(f, "custom_name", False) and f.name.lower() == "nemo":
+            _try("found_nemo")
+            break
+
+    # Easter egg: Were the Beatles? — John, Paul, George, Ringo all in tank
+    _BEATLES = {"john", "paul", "george", "ringo"}
+    if _BEATLES.issubset({f.name.lower() for f in fish_list}):
+        _try("were_the_beatles")
+
     return newly
 
 

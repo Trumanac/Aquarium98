@@ -1080,11 +1080,8 @@ async def main() -> int:
                             _i   = fish_list.index(_cur)
                             _di  = -1 if result == "prev" else 1
                             _tgt = fish_list[(_i + _di) % len(fish_list)]
-                            fish_info.open(_tgt, *surface.get_size(),
-                                           tr.left + int(getattr(_tgt, 'x', tr.w // 2)),
-                                           tr.top  + int(getattr(_tgt, 'y', tr.h // 2)),
-                                           renderer.assets.fish_sheets)
-                            renderer.set_highlight(_tgt)
+                            fish_info.swap_fish(_tgt)
+                            # highlight stays pinned (synced below)
                         continue
                     if result == "close_outside":
                         # Fish info was closed by an outside click; let this event pass through.
@@ -1990,6 +1987,14 @@ async def main() -> int:
                 "algae_pct": int(env.algae),
                 "coins": int(cfg.get("coins", 0)),
             }
+            # Sync highlight: pin to open panel fish or selected roster fish
+            _info_fish   = fish_info.fish if fish_info.visible else None
+            _roster_fish = fish_roster._selected_fish if roster_mode else None
+            _hl_target   = _info_fish or _roster_fish
+            if _hl_target is not None:
+                renderer.pin_highlight(_hl_target)
+            else:
+                renderer.clear_highlight()
             renderer.draw(fish_list, env,
                           paused=paused,
                           locked=bool(cfg.get("locked", False)),
