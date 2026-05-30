@@ -131,6 +131,9 @@ def _is_process_running(pid: int) -> bool:
         return True
     except OSError:
         return False
+    except AttributeError:
+        # os.kill is not available on this platform (e.g. Emscripten/WASM)
+        return False
 
 
 # Windows named-mutex handle — kept alive for the process lifetime.
@@ -140,6 +143,9 @@ _WIN_MUTEX_NAME = "Global\\Aquarium98SingleInstance"
 
 def _acquire_lock() -> bool:
     global _WIN_MUTEX_HANDLE
+    # No single-instance locking in the browser — each tab is its own process.
+    if platform.system() == "Emscripten":
+        return True
     if IS_WINDOWS:
         try:
             import ctypes
