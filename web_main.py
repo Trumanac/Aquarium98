@@ -97,15 +97,17 @@ except Exception as _exc:  # noqa: BLE001
 
 # pygbag requires a callable named `main` in the entry file.
 async def main() -> int:
+    # Draw a "Starting..." splash immediately so the canvas is not grey.
+    _render_status("Starting Aquarium 98...")
+    await asyncio.sleep(0)   # yield so the canvas updates before heavy init
+
     if _game is None:
-        # Display the import error on the pygame canvas so it is visible.
-        import traceback as _tb
         _render_fatal(type(_IMPORT_ERROR).__name__ + ": " + str(_IMPORT_ERROR))
         while True:
             await asyncio.sleep(1)
 
     try:
-        return await _game.main()
+        result = await _game.main()
     except Exception as _exc:  # noqa: BLE001
         import traceback as _tb
         msg = _tb.format_exc()
@@ -113,6 +115,42 @@ async def main() -> int:
         _render_fatal(msg)
         while True:
             await asyncio.sleep(1)
+        return 1  # unreachable
+
+    # If we reach here the game exited cleanly (return 0/1).
+    # Keep showing the canvas so the user sees the last frame; if the screen
+    # is grey that means a silent early-exit occurred.
+    _render_fatal(
+        f"Game exited (code {result}).\n\n"
+        "This is a bug — please report it.\n\n"
+        "Check the browser console (F12) for details."
+    )
+    while True:
+        await asyncio.sleep(1)
+    return result  # unreachable
+
+
+def _render_status(message: str) -> None:
+    """Draw a simple 'Starting...' splash on the canvas."""
+    try:
+        import pygame as _pg
+        _pg.display.init()
+        _pg.font.init()
+        surf = _pg.display.get_surface()
+        if surf is None:
+            surf = _pg.display.set_mode((512, 384))
+        surf.fill((0, 0, 128))
+        try:
+            font = _pg.font.Font(
+                str(ROOT / "assets" / "fonts" / "MSW98UI-Regular.otf"), 14
+            )
+        except Exception:  # noqa: BLE001
+            font = _pg.font.SysFont("monospace", 13)
+        rendered = font.render(message, True, (255, 255, 255))
+        surf.blit(rendered, (20, 20))
+        _pg.display.flip()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _render_fatal(message: str) -> None:
