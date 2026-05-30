@@ -273,7 +273,10 @@ async def main() -> int:
         cfg["last_opened_date"] = today_str
 
         # Show startup splash before the main game window is created
-        pygame.mixer.pre_init(44100, -16, 2, 512)
+        try:
+            pygame.mixer.pre_init(44100, -16, 2, 512)
+        except Exception:  # noqa: BLE001 — some WASM audio backends reject pre_init params
+            pass
         pygame.display.init()
         try:
             pygame.mixer.init()
@@ -281,12 +284,19 @@ async def main() -> int:
             pass
         pygame.font.init()
         show_splash()
+        # Yield to the browser so the startup splash (if any) is visible while
+        # the heavier display and renderer setup runs below.  On desktop this is
+        # a harmless no-op.
+        await asyncio.sleep(0)
 
         surface, sdl_win, font = win_mod.init_window(cfg)
         # Determine whether absolute screen cursor is available on this platform.
         # Must be called after init_window so pygame/SDL2 is fully initialised.
         USE_ABS_CURSOR = win_mod.cursor_available()
         renderer = Renderer(surface, font)
+        # Yield once more after the sprite-heavy Renderer init so the browser
+        # remains responsive during startup.  No-op on desktop.
+        await asyncio.sleep(0)
         renderer.toolbar_collapsed = bool(cfg.get("toolbar_collapsed", False))
         context = ContextMenu(font)
         settings = SettingsDialog(font)
