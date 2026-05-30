@@ -360,6 +360,10 @@ class SpriteAssets:
             "Amano_Shrimp.png",
             "DwarfMexican_Frog.png",
             "AfricanDwarf_Frog.png",
+            # Turtles & frogs (v1.0.14)
+            "Water_Turtle.png",     "Water_Turtle_Rare.png",
+            "RedEaredSlider_Turtle.png",
+            "Frog2.png",            "Frog_Rare.png",
         ):
             s = _load(FI / n)
             if s is not None:
