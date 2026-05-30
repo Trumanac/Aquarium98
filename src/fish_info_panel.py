@@ -131,6 +131,8 @@ class FishInfoPanel:
         # Cached sub-rects (rebuilt by _layout)
         self._title_bar  = pygame.Rect(0, 0, 0, 0)
         self._close_btn  = pygame.Rect(0, 0, 0, 0)
+        self._prev_btn   = pygame.Rect(0, 0, 0, 0)
+        self._next_btn   = pygame.Rect(0, 0, 0, 0)
         self._input_rect = pygame.Rect(0, 0, 0, 0)
         self._save_btn   = pygame.Rect(0, 0, 0, 0)
         self._close2_btn = pygame.Rect(0, 0, 0, 0)
@@ -195,6 +197,12 @@ class FishInfoPanel:
         self._title_bar = pygame.Rect(r.left + 3, r.top + 3, r.w - 6, _TB_H)
         # X close button
         self._close_btn = pygame.Rect(r.right - 3 - _TB_H, r.top + 3, _TB_H, _TB_H)
+        # Prev/Next navigation arrows (in title bar, to the left of X button)
+        _nb_w = _TB_H - 2
+        self._next_btn = pygame.Rect(self._close_btn.left - 2 - _nb_w,
+                                     r.top + 3 + 1, _nb_w, _TB_H - 2)
+        self._prev_btn = pygame.Rect(self._next_btn.left  - 2 - _nb_w,
+                                     r.top + 3 + 1, _nb_w, _TB_H - 2)
         # Content area starts below title bar
         cy = r.top + 3 + _TB_H + 4          # y=29
         # Right column x (after thumbnail + gap)
@@ -235,6 +243,11 @@ class FishInfoPanel:
             # X button — inflated hitbox for easier clicking
             if self._close_btn.inflate(8, 8).collidepoint(ev.pos):
                 self.close(); return "close_inside"
+            # Prev/Next navigation
+            if self._prev_btn.inflate(4, 4).collidepoint(ev.pos):
+                return "prev"
+            if self._next_btn.inflate(4, 4).collidepoint(ev.pos):
+                return "next"
             # Bottom buttons
             if self._close2_btn.inflate(0, 8).collidepoint(ev.pos):
                 self.close(); return "close_inside"
@@ -336,7 +349,13 @@ class FishInfoPanel:
         xs = fnt.render("x", True, WIN_LIGHT)
         surface.blit(xs, (cb.left + (cb.w - xs.get_width()) // 2,
                            cb.top  + (cb.h - xs.get_height()) // 2))
-
+        # ── Prev/Next navigation arrows ───────────────────────────────────────
+        for _nb, _nc in ((self._prev_btn, "<"), (self._next_btn, ">")):
+            pygame.draw.rect(surface, (20, 60, 140), _nb)
+            _bevel(surface, _nb)
+            _ns = fnt.render(_nc, True, WIN_LIGHT)
+            surface.blit(_ns, (_nb.left + (_nb.w - _ns.get_width()) // 2,
+                                _nb.top  + (_nb.h - _ns.get_height()) // 2))
         # ── Content layout y-cursor ───────────────────────────────
         cy = r.top + 3 + _TB_H + 4   # y=29
         rx = r.left + _PAD + _THUMB_W + 6   # right-column x

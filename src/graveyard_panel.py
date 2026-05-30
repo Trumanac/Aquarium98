@@ -47,10 +47,11 @@ def log_death(cfg: dict, fish) -> None:
     else:
         cause = "Unknown"
     record = {
-        "name":     fish.name,
-        "species":  fish.sp.get("name", "Unknown"),
-        "age_days": round(fish.age / 86400.0, 1),
-        "cause":    cause,
+        "name":          fish.name,
+        "species":       fish.sp.get("name", "Unknown"),
+        "age_days":      round(fish.age / 86400.0, 1),
+        "lifespan_days": round(fish.lifespan / 86400.0, 1),
+        "cause":         cause,
     }
     graveyard: list = cfg.get("graveyard") or []
     graveyard.append(record)
@@ -213,11 +214,15 @@ class GraveyardPanel:
                 surface.blit(name_s, (tx + 1, ry + 6))   # shadow
                 surface.blit(name_s, (tx,     ry + 5))
 
-                # Detail line: species · age · cause
-                species_txt = rec.get("species", "")
-                age_days    = rec.get("age_days", 0.0)
-                cause_txt   = rec.get("cause", "")
-                detail = f"{species_txt}  \u00b7  {age_days:.1f}d  \u00b7  {cause_txt}"
+                # Detail line: species · age / lifespan · cause
+                species_txt  = rec.get("species", "")
+                age_days     = rec.get("age_days", 0.0)
+                lifespan_d   = rec.get("lifespan_days")
+                cause_txt    = rec.get("cause", "")
+                if lifespan_d:
+                    detail = f"{species_txt}  \u00b7  Died aged {age_days:.1f}d / {lifespan_d:.1f}d  \u00b7  {cause_txt}"
+                else:
+                    detail = f"{species_txt}  \u00b7  Died aged {age_days:.1f}d  \u00b7  {cause_txt}"
                 det_s  = self.font.render(detail, True, (90, 70, 88))
                 det_w  = PW - 4 - 32 - _PAD * 2
                 clip_r = pygame.Rect(tx, ry + 5 + fh + 3, det_w, fh)

@@ -34,6 +34,8 @@ def feed_menu() -> list[MenuItem]:
         MenuItem("---", None),
         MenuItem("Feed Fish",          "feed"),
         MenuItem("Clean Tank",         "clean"),
+        MenuItem("Fish List",          "fish_list"),
+        MenuItem("Fish Shoppe",        "fish_store"),
         MenuItem("---", None),
         MenuItem("Event Log",          "event_log"),
         MenuItem("Achievements",       "achievements"),

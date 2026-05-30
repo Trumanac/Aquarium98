@@ -191,6 +191,8 @@ class FishStorePanel:
         self._buy_rects:  list[pygame.Rect] = []
         self._restock_btn = pygame.Rect(0, 0, 0, 0)
         self._sell_rows:  list[tuple[pygame.Rect, object]] = []   # (rect, fish)
+        self._sell_thumb_cache: dict[int, pygame.Surface | None] = {}   # id(fish) → thumbnail
+        self._sell_row_areas: list[tuple[pygame.Rect, object]] = []     # (full-row rect, fish)
         self._scroll_up   = pygame.Rect(0, 0, 0, 0)
         self._scroll_dn   = pygame.Rect(0, 0, 0, 0)
         self._slot_previews: list[pygame.Surface | None] = []   # cached per-slot fish previews
@@ -358,6 +360,11 @@ class FishStorePanel:
                     if rect.collidepoint(mx, my):
                         return ("sell", fish)
 
+                # Row area click (outside sell button) -> view fish profile
+                for row_r, fish in self._sell_row_areas:
+                    if row_r.collidepoint(mx, my):
+                        return ("profile", fish)
+
                 # Sell sort button
                 if self._sell_sort_btn.collidepoint(mx, my):
                     idx = _SELL_SORT_MODES.index(self._sell_sort_mode)
@@ -380,6 +387,10 @@ class FishStorePanel:
                     max_scroll = max(0, len(fish_list) - self._visible_sell_rows())
                     self._scroll = min(max_scroll, self._scroll + 1)
                 return ("consume",)
+
+            # Absorb all unhandled clicks that land inside the panel so they
+            # don't fall through to fish or bubbles rendered behind it.
+            return ("consume",)
 
         if ev.type == pygame.MOUSEWHEEL:
             if self._panel_rect.collidepoint(pygame.mouse.get_pos()):
@@ -437,10 +448,17 @@ class FishStorePanel:
         surface.blit(xf, (x_rect.centerx - xf.get_width() // 2,
                            x_rect.centery - xf.get_height() // 2))
 
-        # ── Coin balance ─────────────────────────────────────────
+        # ── Coin balance + tank fill indicator ───────────────────────────────
+        self.tip_regions = []
         coins_str = f"Coins: {int(cfg.get('coins', 0))}"
         cs = self.font.render(coins_str, True, (180, 140, 0))
         surface.blit(cs, (tb.left + 4, tb.bottom + 4))
+        _fish_count = len(fish_list)
+        _max_fish_c = int(cfg.get("max_fish", 30))
+        _fill_str = f"Tank: {_fish_count}/{_max_fish_c}"
+        _fill_col = (200, 60, 60) if _fish_count >= _max_fish_c else (60, 140, 60)
+        _fs = self.font.render(_fill_str, True, _fill_col)
+        surface.blit(_fs, (p.right - _PAD - _fs.get_width(), tb.bottom + 4))
 
         # ── Fish-bowl slots ──────────────────────────────────────
         # Layout per slot (top to bottom):
@@ -525,7 +543,15 @@ class FishStorePanel:
                         self._slot_previews[i] = fish_preview
 
             _draw_bowl(surface, col_cx, bowl_cy, _BOWL_D, fish_preview)
-
+            # Bowl tooltip — species fun fact or diet
+            _sp_tip = slot.species
+            _tip_text = _sp_tip.get("diet", "")
+            if not _tip_text:
+                _facts = _sp_tip.get("fun_facts", [])
+                _tip_text = _facts[0] if _facts else ""
+            if _tip_text:
+                _bowl_tip_r = pygame.Rect(col_cx - _BOWL_D // 2, bowl_top, _BOWL_D, _BOWL_D + _STAND_H)
+                self.tip_regions.append((_bowl_tip_r, _tip_text[:100]))
             # ── Price ─────────────────────────────────────────────
             price_str  = f"{slot.price} coins"
             price_surf = self.font.render(price_str, True, (140, 110, 0))
@@ -545,10 +571,15 @@ class FishStorePanel:
         # ── Restock row ──────────────────────────────────────────
         restock_y = slot_y + slot_area_h + 6
         remaining = max(0.0, RESTOCK_INTERVAL - self._restock_timer)
-        mins = int(remaining) // 60
-        secs = int(remaining) % 60
-        auto_str = f"Auto-restock in {mins}:{secs:02d}"
-        auto_surf = self.font.render(auto_str, True, WIN_DARK)
+        if remaining == 0.0:
+            auto_str = "Ready to Restock!"
+            auto_col = (0, 160, 40)
+        else:
+            mins = int(remaining) // 60
+            secs = int(remaining) % 60
+            auto_str = f"Auto-restock in {mins}:{secs:02d}"
+            auto_col = WIN_DARK
+        auto_surf = self.font.render(auto_str, True, auto_col)
         surface.blit(auto_surf, (p.left + _PAD, restock_y + 6))
 
         diff = int(cfg.get("difficulty", 2))
@@ -630,7 +661,7 @@ class FishStorePanel:
         # ── Sell tab content ──────────────────────────────────────
         if self._active_tab == "sell":
             self._sell_rows = []
-            self.tip_regions = []
+            self._sell_row_areas = []
             if not fish_list:
                 no_fish = self.font.render("No fish to sell.", True, WIN_MID)
                 surface.blit(no_fish, (p.left + _PAD, sell_list_y + 4))
@@ -644,44 +675,84 @@ class FishStorePanel:
                     row_r = pygame.Rect(p.left + _PAD, ry2, p.w - _PAD * 2 - 22, _ROW_H)
                     if ri % 2 == 0:
                         pygame.draw.rect(surface, (182, 182, 190), row_r)
+                    # Health stripe (left edge, 3px wide, green -> red)
+                    _hpct = max(0.0, min(1.0, fish.health))
+                    _hcol = (int(220 * (1.0 - _hpct)), int(200 * _hpct), 30)
+                    pygame.draw.rect(surface, _hcol, (row_r.left, row_r.top, 3, row_r.h))
+                    # Thumbnail
+                    _fid = id(fish)
+                    if _fid not in self._sell_thumb_cache:
+                        _sp2 = fish.sp
+                        _tsh = fish_sheets.get(_sp2.get("sheet", "fish_new.png"))
+                        if _tsh is not None:
+                            _tsw, _tshh = _tsh.get_size()
+                            _tfw, _tfh = _tsw // 3, _tshh // 3
+                            if _tfw > 0 and _tfh > 0:
+                                _tf0 = _tsh.subsurface(pygame.Rect(0, 0, _tfw, _tfh)).copy()
+                                _tph = min(16, _ROW_H - 6)
+                                _tpw = max(8, int(_tph * _tfw / _tfh))
+                                self._sell_thumb_cache[_fid] = pygame.transform.smoothscale(_tf0, (_tpw, _tph))
+                            else:
+                                self._sell_thumb_cache[_fid] = None
+                        else:
+                            self._sell_thumb_cache[_fid] = None
+                    thumb = self._sell_thumb_cache.get(_fid)
+                    _th_x = row_r.left + 5
+                    _th_h = thumb.get_height() if thumb else 16
+                    _th_y = row_r.top + (row_r.h - _th_h) // 2
+                    if thumb:
+                        surface.blit(thumb, (_th_x, _th_y))
+                    else:
+                        pygame.draw.rect(surface, (30, 60, 120), (_th_x, _th_y, 22, 16))
+                    # Rarity dot
                     _sp = fish.sp
                     if _sp.get("super_rare"):   _rdot = (180, 70, 240)
                     elif _sp.get("rare"):        _rdot = (80, 150, 255)
                     elif _sp.get("uncommon"):    _rdot = (60, 210, 80)
                     else:                        _rdot = (160, 160, 160)
-                    pygame.draw.circle(surface, _rdot,   (row_r.left + 8, row_r.centery), 5)
-                    pygame.draw.circle(surface, (0, 0, 0),(row_r.left + 8, row_r.centery), 5, 1)
+                    _dot_x = row_r.left + 5 + 24 + 5
+                    pygame.draw.circle(surface, _rdot,   (_dot_x, row_r.centery), 5)
+                    pygame.draw.circle(surface, (0, 0, 0), (_dot_x, row_r.centery), 5, 1)
                     _rarity_label = ("Epic" if _sp.get("super_rare") else "Rare" if _sp.get("rare")
                                      else "Uncommon" if _sp.get("uncommon") else "Common")
                     self.tip_regions.append((
-                        pygame.Rect(row_r.left, row_r.centery - 8, 16, 16),
+                        pygame.Rect(_dot_x - 7, row_r.centery - 7, 14, 14),
                         f"Rarity: {_rarity_label}",
                     ))
-                    nm    = getattr(fish, "name", "?")
-                    sp_nm = fish.sp.get("name", "?")
-                    label = f"{nm} ({sp_nm})"
-                    lbl_surf = self.font.render(label[:24], True, (0, 0, 0))
-                    surface.blit(lbl_surf, (row_r.left + 18, row_r.top + (row_r.h - lbl_surf.get_height()) // 2))
+                    # Sell button -- wider, shows price
                     price    = fish_sell_price(fish)
-                    sell_r   = pygame.Rect(row_r.right - 34, ry2 + 3, 32, _ROW_H - 6)
-                    price_s  = self.font.render(f"{price}c", True, (120, 90, 0))
-                    price_x  = sell_r.left - 4 - price_s.get_width()
-                    surface.blit(price_s, (price_x, row_r.top + (row_r.h - price_s.get_height()) // 2))
+                    sell_lbl = f"Sell {price}c"
+                    sell_w   = max(56, self.font.size(sell_lbl)[0] + 10)
+                    sell_r   = pygame.Rect(row_r.right - sell_w, ry2 + 3, sell_w - 2, _ROW_H - 6)
+                    # Age text (right-aligned before sell button)
                     _age_secs = getattr(fish, "age", 0.0)
                     if _age_secs >= 86400:   _age_str = f"{_age_secs / 86400:.1f}d"
                     elif _age_secs >= 3600:  _age_str = f"{_age_secs / 3600:.1f}h"
                     else:                    _age_str = f"{int(_age_secs / 60)}m"
                     age_s = self.font.render(_age_str, True, (80, 80, 140))
-                    age_x = price_x - 4 - age_s.get_width()
-                    surface.blit(age_s, (age_x, row_r.top + (row_r.h - age_s.get_height()) // 2))
-                    _btn(surface, sell_r, "Sell", self.font)
+                    age_x = sell_r.left - 4 - age_s.get_width()
+                    # Name label (truncated)
+                    nm    = getattr(fish, "name", "?")
+                    sp_nm = fish.sp.get("name", "?")
+                    label = f"{nm} ({sp_nm})"
+                    _name_x   = _dot_x + 12
+                    _max_nm_w = age_x - 4 - _name_x
+                    lbl_surf  = self.font.render(label, True, (0, 0, 0))
+                    if lbl_surf.get_width() > _max_nm_w and len(label) > 5:
+                        while lbl_surf.get_width() > _max_nm_w and len(label) > 5:
+                            label    = label[:-1]
+                            lbl_surf = self.font.render(label + "..", True, (0, 0, 0))
+                    surface.blit(lbl_surf, (_name_x, row_r.top + (row_r.h - lbl_surf.get_height()) // 2))
+                    surface.blit(age_s,    (age_x,   row_r.top + (row_r.h - age_s.get_height())   // 2))
+                    _btn(surface, sell_r, sell_lbl, self.font)
                     self._sell_rows.append((sell_r, fish))
+                    self._sell_row_areas.append((row_r, fish))
 
         # ── Buy-back tab content ──────────────────────────────────
         else:
             self._sell_rows = []
+            self._sell_row_areas = []
             self._buyback_rows = []
-            self.tip_regions = []
             coins = int(cfg.get("coins", 0))
             if not self._buyback:
                 msg = self.font.render("No recently sold fish.", True, WIN_MID)

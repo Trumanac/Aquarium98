@@ -105,9 +105,10 @@ class FishRosterPanel:
         # Quick-stats side card state
         self._selected_fish              = None
         self._sc_rect      = pygame.Rect(0, 0, 0, 0)
-        self._sc_feed_btn  = pygame.Rect(0, 0, 0, 0)
-        self._sc_sell_btn  = pygame.Rect(0, 0, 0, 0)
-        self._sc_close_btn = pygame.Rect(0, 0, 0, 0)
+        self._sc_feed_btn    = pygame.Rect(0, 0, 0, 0)
+        self._sc_sell_btn    = pygame.Rect(0, 0, 0, 0)
+        self._sc_profile_btn = pygame.Rect(0, 0, 0, 0)
+        self._sc_close_btn   = pygame.Rect(0, 0, 0, 0)
         self._sc_overlay: pygame.Surface | None = None
         self._sc_overlay_size = (0, 0)
         self._sc_btn_flash: dict[str, int] = {}   # "feed"/"sell" → ticks at press
@@ -180,6 +181,8 @@ class FishRosterPanel:
                     fish_to_sell = self._selected_fish
                     self._selected_fish = None
                     return ("sell", fish_to_sell)
+                if self._sc_profile_btn.inflate(0, 8).collidepoint(ev.pos):
+                    return ("profile", self._selected_fish)
                 if self._sc_rect.collidepoint(ev.pos):
                     return True  # inside card but not a button — consume
             # ── Roster panel ──────────────────────────────────────────────────────
@@ -273,7 +276,7 @@ class FishRosterPanel:
         # Header bar
         hbar = pygame.Rect(px, py, PW, header_h)
         pygame.draw.rect(surface, (0, 40, 100), hbar)
-        htxt = self.font.render("Fish List", True, WIN_LIGHT)
+        htxt = self.font.render(f"Fish List ({len(sorted_fish)})", True, WIN_LIGHT)
         surface.blit(htxt, (hbar.left + 5,
                              hbar.top + (header_h - htxt.get_height()) // 2))
 
@@ -435,10 +438,10 @@ class FishRosterPanel:
             if self._selected_fish not in fish_list:
                 self._selected_fish = None
             else:
-                self._draw_side_card(surface, self._selected_fish)
+                self._draw_side_card(surface, self._selected_fish, surface.get_width())
 
     # ------------------------------------------------------------------
-    def _draw_side_card(self, surface: pygame.Surface, fish) -> None:
+    def _draw_side_card(self, surface: pygame.Surface, fish, screen_w: int = 9999) -> None:
         """Draw the compact quick-stats card attached to the right of the roster."""
         fnt   = self.font
         fh    = fnt.get_height()
@@ -451,10 +454,10 @@ class FishRosterPanel:
         has_rarity = fish.sp.get("super_rare") or fish.sp.get("rare") or fish.sp.get("uncommon")
         rc_lines   = 2 + (1 if has_rarity else 0)   # species + mood [+ rarity]
         top_h      = max(_TH, rc_lines * (fh + 3) - 3)
-        stats_h    = 11 + 3 + 11 + 3 + fh   # hp bar + hunger bar + age line
-        sc_h       = hdr_h + pad + top_h + pad + 4 + stats_h + 4 + 22 + pad
+        stats_h    = 11 + 3 + 11 + 3 + fh + 3 + 11  # hp + hunger + age + lifespan bars
+        sc_h       = hdr_h + pad + top_h + pad + 4 + stats_h + 4 + 20 + 4 + 22 + pad
 
-        sx = self._rect.right
+        sx = min(self._rect.right, screen_w - _SC_W - 2)
         sy = self._rect.top
         self._sc_rect = pygame.Rect(sx, sy, _SC_W, sc_h)
 
@@ -560,11 +563,29 @@ class FishRosterPanel:
             age_str = f"Age: {int(age_s / 60)}m"
         surface.blit(fnt.render(age_str, True, (160, 200, 230)), (sx + pad, sy2))
         sy2 += fh + 4
-
+        # Lifespan progress bar
+        lifespan = max(1.0, fish.lifespan)
+        life_pct = min(1.0, fish.age / lifespan)
+        life_col = (int(20 + 200 * life_pct), int(180 - 160 * life_pct), 30)
+        surface.blit(fnt.render("Life", True, WIN_LIGHT), (sx + pad, sy2 + 1))
+        life_r = pygame.Rect(bar_x, sy2, bar_w, 11)
+        _draw_stat_bar(surface, life_r, life_pct, life_col)
+        surface.blit(fnt.render(f"{int(life_pct * 100)}%", True, WIN_LIGHT),
+                     (life_r.right + 2, sy2 + 1))
+        sy2 += 14
         # ── Divider ───────────────────────────────────────────────────────
         pygame.draw.line(surface, WIN_DARK,  (dx1, sy2),     (dx2, sy2))
         pygame.draw.line(surface, WIN_LIGHT, (dx1, sy2 + 1), (dx2, sy2 + 1))
         sy2 += 3
+
+        # ── View Profile button (full width) ──────────────────────────────
+        self._sc_profile_btn = pygame.Rect(sx + pad, sy2, _SC_W - pad * 2, 20)
+        pygame.draw.rect(surface, (20, 60, 120), self._sc_profile_btn)
+        pygame.draw.rect(surface, (60, 120, 200), self._sc_profile_btn, 1)
+        ps = fnt.render("View Profile", True, WIN_LIGHT)
+        surface.blit(ps, (self._sc_profile_btn.centerx - ps.get_width() // 2,
+                           self._sc_profile_btn.top + (self._sc_profile_btn.h - ps.get_height()) // 2))
+        sy2 += 24
 
         # ── Feed / Sell buttons ───────────────────────────────────────────
         half_w = (_SC_W - pad * 3) // 2

@@ -782,6 +782,19 @@ async def main() -> int:
                 food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
                 close_all_overlays(except_one="graveyard")
                 graveyard_panel.toggle()
+            elif action == "fish_list":
+                food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                close_all_overlays(except_one="roster")
+                roster_mode = not roster_mode
+                if roster_mode:
+                    fish_roster.open()
+                else:
+                    fish_roster.close()
+            elif action == "fish_store":
+                food_mode = False; clean_mode = False; cursor_mgr.set_mode("normal")
+                close_all_overlays(except_one="store")
+                fish_store.toggle(cfg, surface.get_size())
+                store_mode = fish_store.visible
             elif action == "tray":
                 _persist_state_now()  # always flush before hiding — covers OS shutdown
                 if tray.started and sdl_win is not None:
@@ -1061,6 +1074,18 @@ async def main() -> int:
                                           max_active=_food_cap())
                             set_status(f"Feeding {_feed_target.name}!")
                         continue
+                    if result in ("prev", "next"):
+                        _cur = fish_info.fish
+                        if _cur is not None and _cur in fish_list:
+                            _i   = fish_list.index(_cur)
+                            _di  = -1 if result == "prev" else 1
+                            _tgt = fish_list[(_i + _di) % len(fish_list)]
+                            fish_info.open(_tgt, *surface.get_size(),
+                                           tr.left + int(getattr(_tgt, 'x', tr.w // 2)),
+                                           tr.top  + int(getattr(_tgt, 'y', tr.h // 2)),
+                                           renderer.assets.fish_sheets)
+                            renderer.set_highlight(_tgt)
+                        continue
                     if result == "close_outside":
                         # Fish info was closed by an outside click; let this event pass through.
                         pass
@@ -1243,6 +1268,16 @@ async def main() -> int:
                                 set_status("Fish Shoppe restocked!")
                             else:
                                 set_status(f"Not enough coins to restock! Need {restock_cost}.")
+                        elif action_type == "profile":
+                            _pfish = action_args[0]
+                            if _pfish in fish_list:
+                                close_all_overlays(except_one="fish_info")
+                                fish_info.open(_pfish, *surface.get_size(),
+                                               tr.left + int(getattr(_pfish, 'x', tr.w // 2)),
+                                               tr.top  + int(getattr(_pfish, 'y', tr.h // 2)),
+                                               renderer.assets.fish_sheets)
+                                renderer.set_highlight(_pfish)
+                                cfg["stat_profile_opens"] = int(cfg.get("stat_profile_opens", 0)) + 1
                         continue
 
                 # Music Player UI events — handled here so all overlay panels
@@ -1314,6 +1349,14 @@ async def main() -> int:
                             set_status(f"Sold {target_fish.name} for {price_sell} coins!")
                             cfg_mod.save(cfg)
                             cfg_mod.save_fish_state(fish_list)
+                        elif action == "profile" and target_fish is not None and target_fish in fish_list:
+                            close_all_overlays(except_one="fish_info")
+                            fish_info.open(target_fish, *surface.get_size(),
+                                           tr.left + int(getattr(target_fish, "x", tr.w // 2)),
+                                           tr.top  + int(getattr(target_fish, "y", tr.h // 2)),
+                                           renderer.assets.fish_sheets)
+                            renderer.set_highlight(target_fish)
+                            cfg["stat_profile_opens"] = int(cfg.get("stat_profile_opens", 0)) + 1
                         continue
                     if result is True:
                         continue
@@ -1489,6 +1532,7 @@ async def main() -> int:
                                             fish_info.open(clicked, *surface.get_size(),
                                                            mx, my,
                                                            renderer.assets.fish_sheets)
+                                            renderer.set_highlight(clicked)
                                             cfg["stat_profile_opens"] = int(cfg.get("stat_profile_opens", 0)) + 1
                         else:
                             # Drag/resize zones (only when not interacting with interior)

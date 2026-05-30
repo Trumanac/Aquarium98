@@ -640,6 +640,9 @@ class Renderer:
         # pygame.transform.rotate() is expensive; wall-grazing fish reuse the
         # same angle each frame, so the result is cached here.
         self._rotated_grazer_cache: dict[tuple, pygame.Surface] = {}
+        # Fish highlight: pulsing circle drawn around a fish when its profile is opened
+        self._highlight_fish  = None
+        self._highlight_until = 0   # pygame.time.get_ticks() expiry ms
         # Pre-tinted animation frames (built in _rebuild_decor, avoids per-frame copy+fill)
         self._surface_ripples_tinted: list[pygame.Surface] = []
         self._caustics_tinted:        list[pygame.Surface] = []
@@ -658,6 +661,11 @@ class Renderer:
     def reset_algae_overlay(self) -> None:
         """Pick a new random algae overlay. Call whenever the tank is cleaned."""
         self._algae_idx = random.randint(0, 3)
+
+    def set_highlight(self, fish, duration_ms: int = 4000) -> None:
+        """Highlight *fish* with a pulsing ring for *duration_ms* milliseconds."""
+        self._highlight_fish  = fish
+        self._highlight_until = pygame.time.get_ticks() + duration_ms
 
     # -----------------------------------------------------------------------
     def compute_tank_rect(self) -> pygame.Rect:
@@ -1214,6 +1222,21 @@ class Renderer:
         sw, sh = spr.get_size()
         sx = tr.left + int(f.x) - sw // 2
         sy = tr.top  + int(f.y) - sh // 2
+
+        # Pulsing highlight ring: shown when this fish's profile was just opened
+        if f is self._highlight_fish:
+            _now = pygame.time.get_ticks()
+            if _now < self._highlight_until:
+                _t      = (_now % 700) / 700.0
+                _base_r = max(sw, sh) // 2 + 3
+                _pr     = _base_r + int(6 * abs(math.sin(math.pi * _t)))
+                _cx     = sx + sw // 2
+                _cy     = sy + sh // 2
+                _gs     = pygame.Surface((_pr * 2 + 2, _pr * 2 + 2), pygame.SRCALPHA)
+                pygame.draw.circle(_gs, (60, 210, 255, 145), (_pr + 1, _pr + 1), _pr)
+                self.surface.blit(_gs, (_cx - _pr - 1, _cy - _pr - 1))
+            else:
+                self._highlight_fish = None  # expired — clear
 
         # Hard floor clip: floor-dwelling species must not visually overflow
         # past the tank floor line, regardless of their y position.
