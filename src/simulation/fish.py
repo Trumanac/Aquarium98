@@ -1055,6 +1055,7 @@ def fish_from_dict(d: dict, tank_w: int, tank_h: int) -> "Fish | None":
     # Migrate renamed species so existing saves don't lose their fish
     _SPECIES_RENAMES = {
         "Crimson Fanveil": "Royal Fanveil",
+        "Algae Eater": "Siamese Algae Eater",
     }
     sp_name = _SPECIES_RENAMES.get(sp_name, sp_name)
     sp = next((s for s in SPECIES if s.get("name") == sp_name), None)

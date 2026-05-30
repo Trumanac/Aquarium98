@@ -1032,7 +1032,7 @@ async def main() -> int:
                         cfg["stat_renamed"] = int(cfg.get("stat_renamed", 0)) + 1
                         _fire_achievement("name_changer")
                         # Easter egg: fish named "Nemo"
-                        _rfish = fish_info.fish
+                        _rfish = fish_info.last_fish
                         if (_rfish is not None
                                 and getattr(_rfish, "custom_name", False)
                                 and _rfish.name.lower() == "nemo"):

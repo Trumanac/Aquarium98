@@ -128,6 +128,8 @@ class FishInfoPanel:
         # Drag state
         self._dragging    = False
         self._drag_offset = (0, 0)
+        # Preserved across close() so aquarium.py can read it in result == "renamed"
+        self.last_fish: object = None
         # Cached sub-rects (rebuilt by _layout)
         self._title_bar  = pygame.Rect(0, 0, 0, 0)
         self._close_btn  = pygame.Rect(0, 0, 0, 0)
@@ -153,6 +155,7 @@ class FishInfoPanel:
              click_x: int, click_y: int,
              fish_sheets: dict[str, pygame.Surface]) -> None:
         self.fish = fish
+        self.last_fish = fish
         self._screen_w = screen_w
         self._screen_h = screen_h
         self._rename = fish.name
@@ -229,8 +232,12 @@ class FishInfoPanel:
             if ev.key == pygame.K_ESCAPE:
                 self._rename_active = False
             elif ev.key == pygame.K_RETURN:
+                _old = self.fish.name if self.fish else ""
                 self._apply_rename()
+                _new = self.fish.name if self.fish else ""
                 self._rename_active = False
+                if _new != _old:
+                    return "renamed"
             elif ev.key == pygame.K_BACKSPACE:
                 self._rename = self._rename[:-1]
             else:

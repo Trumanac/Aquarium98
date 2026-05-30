@@ -179,9 +179,9 @@ SPECIES: list[dict] = [
              "A single Catfish can clean a heavily algaed tank overnight, but will starve without supplemental food.",
          ]),
 
-    # ── Algae Eater (Siamese) ──────────────────────────────────────────────
+    # ── Siamese Algae Eater ──────────────────────────────────────────────
     # Active scraper; algae_seeker flag gives it proportional grazing + growth suppression.
-    dict(name="Algae Eater",  body=(80, 160, 200),  fin=(200, 140, 60), accent=(255, 180, 40),
+    dict(name="Siamese Algae Eater",  body=(80, 160, 200),  fin=(200, 140, 60), accent=(255, 180, 40),
          size=12, speed=12, sociable=False, pattern="topband", aspect=0.60, fin_style="low",
          bottom=True, algae_eater=True, algae_seeker=True, layer_pref=1,
          sheet="AlgaeEater_Fish.png",
