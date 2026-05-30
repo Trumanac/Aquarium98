@@ -42,7 +42,9 @@ jobs:
             libappindicator3-1 gir1.2-appindicator3-0.1
 
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       # ── Syntax check ───────────────────────────────────────────────────────
       - name: Syntax check (all .py files)
