@@ -9,6 +9,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.14] — 2026-05-29
+
+### Added
+- **5 new species** — Sea Turtle (uncommon), Red-ear Slider (uncommon), Leopard Frog (uncommon), Azure Dart Frog (epic), and Aurora Leatherback (super-rare) with full fun-facts for the Fish Profile popup.
+
+### Changed
+- **Achievement panel locked entries** — locked regular achievements now show the achievement name in grey with "???" hint text; locked easter-egg achievements show "???" and "Secret achievement" to hint at their existence without spoiling them.
+
+### Fixed
+- **Update check silent failure** — network errors were swallowed silently; the Settings button now shows "Checking for updates…" while the request is in-flight and "Check failed — Retry" (in red) on error. HTTP timeout raised from 6 s to 12 s; double-click guard prevents duplicate requests.
+- **Difficulty change allowed with too many fish** — switching to a lower difficulty whose fish cap was below the current population was silently accepted. The dialog now blocks the change, shows an info message, and reverts the slider.
+- **Rotated grazer sprite computed every frame** — `pygame.transform.rotate()` was called on every draw for wall-grazing algae-seekers. Result is now cached in `_rotated_grazer_cache` keyed by `(cache_key, frame, angle)`.
+- **Food flake `set_alpha()` mutated shared asset surface** — non-grounded food flakes called `set_alpha()` directly on the cached asset surface, potentially affecting other renders. Non-grounded flakes now use a pre-built copy stored in `_grounded_food_cache`.
+- **Bubble and food caches unbounded** — `_bubble_sprite_cache` and `_grounded_food_cache` had no eviction policy; long sessions or many resizes could accumulate hundreds of surfaces. Both caches are now capped at 128 entries with LRU eviction (oldest 64 dropped).
+- **Fish sprite cache over-keyed** — cache key used `int(f.scale * 100)`, producing ~55 unique entries per fish lifetime as it grew. Key now rounds to the nearest 5 (`// 5 * 5`), reducing misses to ~11.
+- **Solitary-fish proximity list rebuilt per sim step** — `_solitary` filter was rebuilt inside the sim step loop (up to 6× per frame). Now computed once per frame as a boolean flag `_solitary_present`.
+- **`_health_warned` id() GC collision** — the critical-health warning set stored `id(f)` integers; if a fish was deleted and a new one allocated at the same address, the warning could be incorrectly suppressed. Now stores Fish object references directly.
+- **Treasure chest cache spike on eviction** — the frame cache cleared all 32 entries at once on overflow. Now evicts only the 8 oldest entries to avoid a rendering spike.
+- **Degenerate sprite sheet crash in Fish Shoppe** — a sprite sheet with zero-height frames would call `subsurface()` with a zero-dimension rect, raising a pygame error. Now guarded with `_fw < 1 or _fh < 1` check.
+- **`LAYER_X_MARGIN` / `LAYER_Y_MAX_FRAC` KeyError on corrupt save** — bare dict indexing would crash if `f.layer` held an unexpected value after loading a corrupted save file. Both lookups now use `.get()` with a safe fallback.
+- **Graveyard panel allocating list on every draw** — `list(reversed(raw))` allocated a new list every frame when the graveyard changed. Replaced with `raw[::-1]`.
+
+---
+
 ## [1.0.12] — 2026-05-28
 
 ### Fixed
