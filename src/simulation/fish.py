@@ -829,6 +829,10 @@ def update_fish(f: Fish, tank_w: int, tank_h: int, dt: float,
                 if new_grazing and not f.is_grazing:
                     # Transition: pick wall, position, force to front layer
                     _start_grazing(f, tank_w, tank_h, fish_list)
+                elif f.is_grazing and not new_grazing:
+                    # Session interrupted (e.g. spotted food); short cooldown
+                    # prevents immediate re-snap to the glass next tick.
+                    f.graze_cd = random.uniform(8.0, 20.0)
                 f.is_grazing = new_grazing
         else:
             # No algae to eat — hunger rises faster (missing natural food source)
