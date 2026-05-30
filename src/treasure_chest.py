@@ -214,7 +214,9 @@ class TreasureChest:
             # Evict stale entries when the cache grows too large (e.g. after
             # many window resizes) to avoid unbounded surface accumulation.
             if len(self._frame_cache) >= 32:
-                self._frame_cache.clear()
+                # LRU eviction: drop oldest 8 entries rather than clearing all 32
+                # to avoid a rendering spike after many window resizes.
+                self._frame_cache = dict(list(self._frame_cache.items())[8:])
             sw, sh = sheet.get_size()
             fw, fh = sw // 3, sh // 3
             col, row = fi % 3, fi // 3

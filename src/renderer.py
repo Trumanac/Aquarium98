@@ -626,10 +626,16 @@ class Renderer:
 
         # Bubble sprite cache: (sprite_idx, size) → scaled Surface
         # Avoids smoothscale on every bubble every frame.
+        # Capped at 128 entries; oldest entries evicted to bound memory use.
         self._bubble_sprite_cache: dict[tuple[int, int], pygame.Surface] = {}
         # Grounded food sprite cache: (layer, flake_idx) → darkened Surface
         # Avoids copy+fill on every grounded flake every frame.
+        # Capped at 128 entries; oldest entries evicted to bound memory use.
         self._grounded_food_cache: dict[tuple[int, int], pygame.Surface] = {}
+        # Rotated grazer sprite cache: (cache_key_tuple, angle_int) → Surface
+        # pygame.transform.rotate() is expensive; wall-grazing fish reuse the
+        # same angle each frame, so the result is cached here.
+        self._rotated_grazer_cache: dict[tuple, pygame.Surface] = {}
         # Pre-tinted animation frames (built in _rebuild_decor, avoids per-frame copy+fill)
         self._surface_ripples_tinted: list[pygame.Surface] = []
         self._caustics_tinted:        list[pygame.Surface] = []
@@ -1093,6 +1099,9 @@ class Renderer:
                 cache_key = (b.sprite_idx % 3, size)
                 scaled = self._bubble_sprite_cache.get(cache_key)
                 if scaled is None:
+                    if len(self._bubble_sprite_cache) >= 128:
+                        # Evict oldest half to prevent unbounded growth after many resizes
+                        self._bubble_sprite_cache = dict(list(self._bubble_sprite_cache.items())[64:])
                     scaled = pygame.transform.smoothscale(sprite, (size, size))
                     self._bubble_sprite_cache[cache_key] = scaled
                 self.surface.blit(scaled, (bx - size // 2, by - size // 2))
@@ -1116,15 +1125,24 @@ class Renderer:
                     gk = (layer, fd.flake_idx % 9)
                     spr = self._grounded_food_cache.get(gk)
                     if spr is None:
+                        if len(self._grounded_food_cache) >= 128:
+                            self._grounded_food_cache = dict(list(self._grounded_food_cache.items())[64:])
                         spr = raw_spr.copy()
                         spr.fill((80, 50, 0, 0), special_flags=pygame.BLEND_RGBA_SUB)
                         spr.set_alpha(max(60, alpha - 60))
                         self._grounded_food_cache[gk] = spr
                 else:
-                    # Non-grounded: set alpha directly on the cached surface (same
-                    # alpha value every time per layer — no pixel data changed).
-                    raw_spr.set_alpha(alpha)
-                    spr = raw_spr
+                    # Non-grounded food: use a per-layer alpha-preset copy stored in the
+                    # grounded cache under a negative key so we don't mutate the shared
+                    # asset surface (set_alpha on a shared surface would affect all users).
+                    ak = (-layer - 1, fd.flake_idx % 9)
+                    spr = self._grounded_food_cache.get(ak)
+                    if spr is None:
+                        if len(self._grounded_food_cache) >= 128:
+                            self._grounded_food_cache = dict(list(self._grounded_food_cache.items())[64:])
+                        spr = raw_spr.copy()
+                        spr.set_alpha(alpha)
+                        self._grounded_food_cache[ak] = spr
                 self.surface.blit(spr, (fx - size // 2, fy - size // 2))
             else:
                 col = (140, 100, 40) if getattr(fd, "grounded", False) else (220, 180, 80)
@@ -1139,7 +1157,7 @@ class Renderer:
         if sheet is None:
             return
 
-        cache_key = (sheet_name, f.layer, int(f.scale * 100))
+        cache_key = (sheet_name, f.layer, int(f.scale * 100) // 5 * 5)
         is_hermit      = bool(f.sp.get("hermit_crab"))
         is_algae_seeker = bool(f.sp.get("algae_seeker"))
         # Combine biological growth scale with species-size multiplier so that
@@ -1172,9 +1190,16 @@ class Renderer:
             idx = frame + (0 if f.facing > 0 else right_count)
         spr = f.cached_surfaces[idx]
 
-        # Rotate side-wall grazers so the fish runs vertically along the glass
+        # Rotate side-wall grazers so the fish runs vertically along the glass.
+        # Cache the result keyed by (cache_key, frame_idx, angle) — the angle
+        # is constant while grazing so this avoids a costly rotate() every frame.
         if is_algae_seeker and f.is_grazing and f.graze_angle != 0.0:
-            spr = pygame.transform.rotate(spr, f.graze_angle)
+            rot_key = (f.cache_key, idx, int(f.graze_angle))
+            rot_spr = self._rotated_grazer_cache.get(rot_key)
+            if rot_spr is None:
+                rot_spr = pygame.transform.rotate(spr, f.graze_angle)
+                self._rotated_grazer_cache[rot_key] = rot_spr
+            spr = rot_spr
 
         # Health < 0.6: fade toward transparent as the fish declines
         if f.health < 0.6:

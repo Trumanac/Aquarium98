@@ -398,7 +398,7 @@ def _update_frog(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
     descending — slowly drifts back to the floor (frames 0-2)
     """
     f.frog_timer -= dt
-    margin = LAYER_X_MARGIN[f.layer]
+    margin = LAYER_X_MARGIN.get(f.layer, LAYER_X_MARGIN[1])
 
     if f.frog_phase == "resting":
         f.y = float(tank_h) - 24
@@ -603,8 +603,8 @@ def _update_motion(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
             f.facing_cd = 0.75   # 5 ticks × 150 ms
 
     # Wall bounce — reflect heading so fish turn naturally at edges
-    margin = LAYER_X_MARGIN[f.layer]
-    ymax = tank_h * LAYER_Y_MAX_FRAC[f.layer]
+    margin = LAYER_X_MARGIN.get(f.layer, LAYER_X_MARGIN[1])
+    ymax = tank_h * LAYER_Y_MAX_FRAC.get(f.layer, LAYER_Y_MAX_FRAC[1])
     if f.x < margin:
         f.x = margin
         # For bottom/lurk fish use a wider scatter angle so they don't hug the wall

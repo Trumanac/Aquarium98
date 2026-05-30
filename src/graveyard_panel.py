@@ -164,7 +164,7 @@ class GraveyardPanel:
 
         raw = cfg.get("graveyard") or []
         if len(raw) != self._graveyard_len:
-            self._graveyard_cache = list(reversed(raw))
+            self._graveyard_cache = raw[::-1]
             self._graveyard_len = len(raw)
         graveyard: list[dict] = self._graveyard_cache
         title_txt = f"Fish Memorial  \u2014  {len(graveyard)} lost"

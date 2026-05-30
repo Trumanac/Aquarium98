@@ -515,11 +515,14 @@ class FishStorePanel:
                 if _sh is not None:
                     _sw, _sh2 = _sh.get_size()
                     _fw, _fh = _sw // 3, _sh2 // 3
-                    _frame0 = _sh.subsurface(pygame.Rect(0, 0, _fw, _fh)).copy()
-                    _ph = min(32, _BOWL_D - 14)
-                    _pw = max(10, int(_ph * _fw / max(1, _fh)))
-                    fish_preview = pygame.transform.smoothscale(_frame0, (_pw, _ph))
-                    self._slot_previews[i] = fish_preview
+                    if _fw < 1 or _fh < 1:
+                        self._slot_previews[i] = None
+                    else:
+                        _frame0 = _sh.subsurface(pygame.Rect(0, 0, _fw, _fh)).copy()
+                        _ph = min(32, _BOWL_D - 14)
+                        _pw = max(10, int(_ph * _fw / _fh))
+                        fish_preview = pygame.transform.smoothscale(_frame0, (_pw, _ph))
+                        self._slot_previews[i] = fish_preview
 
             _draw_bowl(surface, col_cx, bowl_cy, _BOWL_D, fish_preview)
 
