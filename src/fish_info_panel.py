@@ -101,13 +101,8 @@ def _draw_bar(surf: pygame.Surface, r: pygame.Rect,
 
 
 def _hp_color(pct: float) -> tuple:
-    """Green when healthy → yellow → red when critical."""
+    """Green when high (full/healthy) → red when low (empty/critical).  Used for HP, Fed, and Life bars."""
     return (int(220 * (1.0 - pct)), int(200 * pct), 30)
-
-
-def _hunger_color(pct: float) -> tuple:
-    """Green when full (hunger=0) → orange/red when starving (hunger=1)."""
-    return (int(220 * pct), int(180 * (1.0 - pct)), 20)
 
 
 class FishInfoPanel:
@@ -140,6 +135,13 @@ class FishInfoPanel:
         self._close2_btn = pygame.Rect(0, 0, 0, 0)
         self._sell_btn   = pygame.Rect(0, 0, 0, 0)
         self._feed_btn   = pygame.Rect(0, 0, 0, 0)
+        # Button press states (set on MOUSEBUTTONDOWN, fired+cleared on MOUSEBUTTONUP)
+        self._feed_press:   bool = False
+        self._sell_press:   bool = False
+        self._save_press:   bool = False
+        self._close2_press: bool = False
+        self._prev_press:   bool = False
+        self._next_press:   bool = False
         # Thumbnail cache
         self._thumb: pygame.Surface | None = None
         self._thumb_fid: int = -1
@@ -179,7 +181,7 @@ class FishInfoPanel:
         _cdyn   = _top_h + 5
         _cdyn  += 4 + (fh_d + 2) + len(self._fact_lines) * (fh_d + 1)
         _cdyn  += 3 + 4 + (fh_d + 2) + len(self._personality_lines) * (fh_d + 1)
-        _stats_h = _PAD + 22 + 4 + fh_d + 3 + 11 + 3 + 11 + 4  # bottom stats block
+        _stats_h = _PAD + 22 + 4 + fh_d + 3 + 11 + 3 + 11 + 3 + 11 + 4  # bottom stats block
         ph_dyn = max(280, 25 + _cdyn + _stats_h + 8)
         # Position near click, clamped to window
         px = max(0, min(screen_w - PW, click_x - PW // 2))
@@ -213,7 +215,7 @@ class FishInfoPanel:
         _cdyn   = _top_h + 5
         _cdyn  += 4 + (fh_d + 2) + len(self._fact_lines) * (fh_d + 1)
         _cdyn  += 3 + 4 + (fh_d + 2) + len(self._personality_lines) * (fh_d + 1)
-        _stats_h = _PAD + 22 + 4 + fh_d + 3 + 11 + 3 + 11 + 4
+        _stats_h = _PAD + 22 + 4 + fh_d + 3 + 11 + 3 + 11 + 3 + 11 + 4
         ph_dyn = max(280, 25 + _cdyn + _stats_h + 8)
         self._rect = pygame.Rect(self._rect.left,
                                  max(0, min(self._screen_h - ph_dyn, self._rect.top)),
@@ -224,6 +226,8 @@ class FishInfoPanel:
         self.visible   = False
         self.fish      = None
         self._dragging = False
+        self._feed_press = self._sell_press = self._save_press = False
+        self._close2_press = self._prev_press = self._next_press = False
 
     def _layout(self) -> None:
         r = self._rect
@@ -282,24 +286,20 @@ class FishInfoPanel:
             # X button — inflated hitbox for easier clicking
             if self._close_btn.inflate(8, 8).collidepoint(ev.pos):
                 self.close(); return "close_inside"
-            # Prev/Next navigation
+            # Prev/Next navigation (press state — fires on MOUSEUP)
             if self._prev_btn.inflate(4, 4).collidepoint(ev.pos):
-                return "prev"
+                self._prev_press = True; return True
             if self._next_btn.inflate(4, 4).collidepoint(ev.pos):
-                return "next"
-            # Bottom buttons
+                self._next_press = True; return True
+            # Bottom buttons (press state — fires on MOUSEUP)
             if self._close2_btn.inflate(0, 8).collidepoint(ev.pos):
-                self.close(); return "close_inside"
+                self._close2_press = True; return True
             if self._sell_btn.inflate(0, 8).collidepoint(ev.pos):
-                return "sell"
+                self._sell_press = True; return True
             if self._feed_btn.inflate(0, 8).collidepoint(ev.pos):
-                return "feed"
+                self._feed_press = True; return True
             if self._save_btn.inflate(0, 8).collidepoint(ev.pos):
-                old_name = self.fish.name if self.fish else ""
-                self._apply_rename()
-                new_name = self.fish.name if self.fish else ""
-                self.close()
-                return "renamed" if new_name != old_name else "close_inside"
+                self._save_press = True; return True
             # Name input activate
             if self._input_rect.collidepoint(ev.pos):
                 self._rename_active = True; return True
@@ -317,6 +317,38 @@ class FishInfoPanel:
 
         elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
             self._dragging = False
+            pos = ev.pos
+            if self._prev_press:
+                self._prev_press = False
+                if self._prev_btn.inflate(4, 4).collidepoint(pos):
+                    return "prev"
+            if self._next_press:
+                self._next_press = False
+                if self._next_btn.inflate(4, 4).collidepoint(pos):
+                    return "next"
+            if self._close2_press:
+                self._close2_press = False
+                if self._close2_btn.inflate(0, 8).collidepoint(pos):
+                    self.close(); return "close_inside"
+            if self._sell_press:
+                self._sell_press = False
+                if self._sell_btn.inflate(0, 8).collidepoint(pos):
+                    return "sell"
+            if self._feed_press:
+                self._feed_press = False
+                if self._feed_btn.inflate(0, 8).collidepoint(pos):
+                    return "feed"
+            if self._save_press:
+                self._save_press = False
+                if self._save_btn.inflate(0, 8).collidepoint(pos):
+                    old_name = self.fish.name if self.fish else ""
+                    self._apply_rename()
+                    new_name = self.fish.name if self.fish else ""
+                    self.close()
+                    return "renamed" if new_name != old_name else "close_inside"
+            # Clear any stray press states (e.g. mouse released outside the button)
+            self._prev_press = self._next_press = self._close2_press = False
+            self._sell_press = self._feed_press = self._save_press = False
 
         elif ev.type == pygame.MOUSEMOTION and self._dragging:
             nx = ev.pos[0] - self._drag_offset[0]
@@ -390,11 +422,13 @@ class FishInfoPanel:
                            cb.top  + (cb.h - xs.get_height()) // 2))
         # ── Prev/Next navigation arrows ───────────────────────────────────────
         for _nb, _nc in ((self._prev_btn, "<"), (self._next_btn, ">")):
+            _nb_pressed = self._prev_press if _nc == "<" else self._next_press
             pygame.draw.rect(surface, (20, 60, 140), _nb)
-            _bevel(surface, _nb)
+            _bevel(surface, _nb, _nb_pressed)
             _ns = fnt.render(_nc, True, WIN_LIGHT)
-            surface.blit(_ns, (_nb.left + (_nb.w - _ns.get_width()) // 2,
-                                _nb.top  + (_nb.h - _ns.get_height()) // 2))
+            _ox = 1 if _nb_pressed else 0
+            surface.blit(_ns, (_nb.left + (_nb.w - _ns.get_width()) // 2 + _ox,
+                                _nb.top  + (_nb.h - _ns.get_height()) // 2 + _ox))
         # ── Content layout y-cursor ───────────────────────────────
         cy = r.top + 3 + _TB_H + 4   # y=29
         rx = r.left + _PAD + _THUMB_W + 6   # right-column x
@@ -505,21 +539,22 @@ class FishInfoPanel:
             surface.blit(ls, (r.left + _PAD, dy))
             dy += fh + 1
 
-        # ── Stats block: HP · Hunger · Age/Lifespan ───────────────
+        # ── Stats block: HP · Fed · Life · Age ─────────────────────
         # Anchored from bottom so it never overlaps content above.
+        # All three bars: full (100%) = good/green, empty (0%) = bad/red.
         # Layout (bottom-up): buttons(22)+gap(4)+age_row(fh)+gap(3)
-        #                     +hunger_bar(11)+gap(3)+hp_bar(11)+gap(4)+divider(2)
-        stats_y = r.bottom - _PAD - 22 - 4 - fh - 3 - 11 - 3 - 11 - 4
+        #                     +life_bar(11)+gap(3)+fed_bar(11)+gap(3)+hp_bar(11)+gap(4)+divider(2)
+        stats_y = r.bottom - _PAD - 22 - 4 - fh - 3 - 11 - 3 - 11 - 3 - 11 - 4
         _divider(surface, r.left + _PAD, r.right - _PAD, stats_y)
         sy = stats_y + 4
 
-        # Align both bar labels to same column
-        lbl_w = fnt.size("Hunger")[0] + 4
+        # Align all bar labels to same column ("Life" is widest)
+        lbl_w = fnt.size("Life")[0] + 4
         pct_w = fnt.size("100%")[0] + 4
         bar_x = r.left + _PAD + lbl_w
         bar_w = r.right - _PAD - bar_x - pct_w
 
-        # HP bar
+        # HP bar  (full = healthy, empty = critical)
         hpct   = max(0.0, min(1.0, f.health))
         surface.blit(fnt.render("HP", True, (0, 0, 0)), (r.left + _PAD, sy + 1))
         hp_r   = pygame.Rect(bar_x, sy, bar_w, 11)
@@ -528,47 +563,59 @@ class FishInfoPanel:
                      (hp_r.right + 2, sy + 1))
         sy += 14   # bar(11) + gap(3)
 
-        # Hunger bar  (0 = full/green  →  1 = starving/red)
-        hg   = max(0.0, min(1.0, f.hunger))
-        surface.blit(fnt.render("Hunger", True, (0, 0, 0)), (r.left + _PAD, sy + 1))
+        # Fed bar  (full = well-fed/green, empty = starving/red; inverted from raw hunger)
+        hg   = max(0.0, min(1.0, 1.0 - f.hunger))
+        surface.blit(fnt.render("Fed", True, (0, 0, 0)), (r.left + _PAD, sy + 1))
         hg_r = pygame.Rect(bar_x, sy, bar_w, 11)
-        _draw_bar(surface, hg_r, hg, _hunger_color(hg))
+        _draw_bar(surface, hg_r, hg, _hp_color(hg))
         surface.blit(fnt.render(f"{int(hg * 100)}%", True, (0, 0, 0)),
                      (hg_r.right + 2, sy + 1))
         sy += 14   # bar(11) + gap(3)
 
-        # Age / lifespan text  (format as days / hours / minutes as appropriate)
+        # Life bar  (full = young/lots of lifespan remaining, empty = near natural end)
+        life_pct = max(0.0, min(1.0, 1.0 - f.age / max(1.0, f.lifespan)))
+        surface.blit(fnt.render("Life", True, (0, 0, 0)), (r.left + _PAD, sy + 1))
+        life_r = pygame.Rect(bar_x, sy, bar_w, 11)
+        _draw_bar(surface, life_r, life_pct, _hp_color(life_pct))
+        surface.blit(fnt.render(f"{int(life_pct * 100)}%", True, (0, 0, 0)),
+                     (life_r.right + 2, sy + 1))
+        sy += 14   # bar(11) + gap(3)
+
+        # Age text
         def _fmt_time(secs: float) -> str:
             if secs >= 86400:
                 return f"{secs / 86400:.1f}d"
             if secs >= 3600:
                 return f"{secs / 3600:.1f}h"
             return f"{secs / 60:.0f}m"
-        age_str = f"Age: {_fmt_time(f.age)}  /  Life: {_fmt_time(f.lifespan)}"
+        age_str = f"Age: {_fmt_time(f.age)}"
         surface.blit(fnt.render(age_str, True, (40, 40, 60)), (r.left + _PAD, sy))
 
         # ── Bottom buttons ────────────────────────────────────────
-        for btn, label in ((self._save_btn, "Save Name"),
-                           (self._close2_btn, "Close")):
+        for btn, label, pressed in ((self._save_btn,   "Save Name", self._save_press),
+                                    (self._close2_btn, "Close",     self._close2_press)):
             pygame.draw.rect(surface, WIN_GRAY, btn)
-            _bevel(surface, btn)
+            _bevel(surface, btn, pressed)
             bs = fnt.render(label, True, (0, 0, 0))
-            surface.blit(bs, (btn.left + (btn.w - bs.get_width()) // 2,
-                               btn.top  + (btn.h - bs.get_height()) // 2))
+            ox = 1 if pressed else 0
+            surface.blit(bs, (btn.left + (btn.w - bs.get_width()) // 2 + ox,
+                               btn.top  + (btn.h - bs.get_height()) // 2 + ox))
 
         # Bottom-row left buttons: Sell and Feed
         sell_price = fish_sell_price(f)
         sell_label = f"Sell ({sell_price}c)"
         pygame.draw.rect(surface, WIN_GRAY, self._sell_btn)
-        _bevel(surface, self._sell_btn)
+        _bevel(surface, self._sell_btn, self._sell_press)
         ss = fnt.render(sell_label, True, (0, 100, 0))
-        surface.blit(ss, (self._sell_btn.left + (self._sell_btn.w - ss.get_width()) // 2,
-                          self._sell_btn.top  + (self._sell_btn.h - ss.get_height()) // 2))
+        sox = 1 if self._sell_press else 0
+        surface.blit(ss, (self._sell_btn.left + (self._sell_btn.w - ss.get_width()) // 2 + sox,
+                          self._sell_btn.top  + (self._sell_btn.h - ss.get_height()) // 2 + sox))
 
         # Feed button
         pygame.draw.rect(surface, WIN_GRAY, self._feed_btn)
-        _bevel(surface, self._feed_btn)
+        _bevel(surface, self._feed_btn, self._feed_press)
         feed_s = fnt.render("Feed", True, (0, 80, 160))
-        surface.blit(feed_s, (self._feed_btn.left + (self._feed_btn.w - feed_s.get_width()) // 2,
-                               self._feed_btn.top  + (self._feed_btn.h - feed_s.get_height()) // 2))
+        fox = 1 if self._feed_press else 0
+        surface.blit(feed_s, (self._feed_btn.left + (self._feed_btn.w - feed_s.get_width()) // 2 + fox,
+                               self._feed_btn.top  + (self._feed_btn.h - feed_s.get_height()) // 2 + fox))
 

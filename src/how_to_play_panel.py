@@ -537,6 +537,31 @@ def _page_mood_rarity(surf: pygame.Surface, r: pygame.Rect,
                   (r.left + 22, y))
         y += lh
 
+    y += 8
+
+    # ── Status Bars ──────────────────────────────────────────────────
+    surf.blit(big.render("Status Bars  (Fish Profile & Fish List)", True, WIN_DARK),
+              (r.left + 4, y))
+    y += lh + 1
+    _bar_defs = [
+        ("HP",   "health remaining — 100% = healthy, 0% = critical"),
+        ("Fed",  "stomach fullness — 100% = just eaten, 0% = starving"),
+        ("Life", "lifespan left    — 100% = just born, 0% = natural end"),
+    ]
+    _bw, _bh = 52, max(8, font.get_height() - 1)
+    for _lbl, _desc in _bar_defs:
+        _tr = pygame.Rect(r.left + 4, y + 1, _bw, _bh)
+        pygame.draw.rect(surf, (160, 160, 160), _tr)
+        pygame.draw.rect(surf, (20, 190, 40),
+                         pygame.Rect(_tr.left, _tr.top, int(_tr.w * 0.80), _tr.h))
+        pygame.draw.line(surf, WIN_DARK,  _tr.topleft, (_tr.right - 1, _tr.top))
+        pygame.draw.line(surf, WIN_DARK,  _tr.topleft, (_tr.left, _tr.bottom - 1))
+        pygame.draw.line(surf, WIN_LIGHT, (_tr.right - 1, _tr.top), (_tr.right - 1, _tr.bottom - 1))
+        pygame.draw.line(surf, WIN_LIGHT, (_tr.left, _tr.bottom - 1), (_tr.right - 1, _tr.bottom - 1))
+        surf.blit(font.render(f"{_lbl:4s} — {_desc}", True, (0, 0, 0)),
+                  (r.left + 4 + _bw + 4, y))
+        y += lh
+
 
 def _page_coins(surf: pygame.Surface, r: pygame.Rect,
                 font: pygame.font.Font) -> None:
@@ -599,7 +624,7 @@ def _page_panels(surf: pygame.Surface, r: pygame.Rect,
               (r.left + 4, r.top + 2))
 
     items = [
-        ("Fish List",    "Live table of every fish — health, hunger, mood.", (120, 180, 230)),
+        ("Fish List",    "Live table of every fish — HP, Fed, and mood bars.",  (120, 180, 230)),
         ("Event Log",    "Timestamped history of births, deaths, feeds…",    (200, 200, 100)),
         ("Achievements", "20+ milestones with coin rewards.",                  (240, 200,  60)),
         ("Encyclopaedia","All species you''ve seen, with fun facts.",         (140, 200, 140)),
@@ -686,12 +711,12 @@ def _page_tips(surf: pygame.Surface, r: pygame.Rect,
             surf.blit(_fr, (r.left + 4 + _i * slot_w + (slot_w - _fr.get_width()) // 2, iy))
 
     tips = [
-        "Feed often — hunger above 85% causes health to slowly decline.",
+        "Feed often — the Fed bar dropping below ~15% means health will slowly decline.",
         "Scrub algae with C before it hits 65% — dirty water stresses all fish.",
         "Avoid overcrowding — a full tank stresses every fish. Leave some space!",
         "Well-fed healthy adults breed automatically — give them food and room.",
         "Toggle fish names and mood dots: right-click → Show Names / Moods.",
-        "Rare & Epic fish can't breed true — spot them or buy from the Shoppe.",
+        "New fish only come from breeding or the Shoppe — buy a pair, keep them fed and healthy, and they'll breed on their own.",
         "Change castle and plant style anytime via right-click → Settings.",
         "Press M to open the music player — 8 ambient tracks keep your tank alive.",
         "Press T to view the Stats panel — live charts for fish, algae, and coins.",

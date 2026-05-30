@@ -524,7 +524,7 @@ class MusicPlayer:
                 surface.blit(self._press_overlay, self._next_btn.topleft)
         else:
             pygame.draw.rect(surface, _GRAY, self._next_btn)
-            _bevel(surface, self._next_btn)
+            _bevel(surface, self._next_btn, pressed=self._held_btn == "next")
             nx = self._next_btn.centerx - 2
             ny = self._next_btn.centery
             pygame.draw.polygon(surface, _DARK, [(nx - 3, ny - 4), (nx + 1, ny), (nx - 3, ny + 4)])
@@ -540,7 +540,7 @@ class MusicPlayer:
                 surface.blit(self._press_overlay, self._pp_btn.topleft)
         else:
             pygame.draw.rect(surface, _GRAY, self._pp_btn)
-            _bevel(surface, self._pp_btn)
+            _bevel(surface, self._pp_btn, pressed=self._held_btn == "pp")
             pc  = self._pp_btn.centerx
             pcy = self._pp_btn.centery
             if self._playing:
@@ -559,7 +559,7 @@ class MusicPlayer:
                 surface.blit(self._press_overlay, self._prev_btn.topleft)
         else:
             pygame.draw.rect(surface, _GRAY, self._prev_btn)
-            _bevel(surface, self._prev_btn)
+            _bevel(surface, self._prev_btn, pressed=self._held_btn == "prev")
             prx = self._prev_btn.centerx + 2
             pry = self._prev_btn.centery
             pygame.draw.polygon(surface, _DARK, [(prx + 3, pry - 4), (prx - 1, pry), (prx + 3, pry + 4)])

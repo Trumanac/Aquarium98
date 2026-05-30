@@ -67,11 +67,8 @@ def _draw_stat_bar(surf: pygame.Surface, r: pygame.Rect,
 
 
 def _hp_color_sc(pct: float) -> tuple:
+    """Green when high (full/healthy) → red when low (empty/critical).  Shared by HP, Fed, and Life bars."""
     return (int(220 * (1.0 - pct)), int(200 * pct), 30)
-
-
-def _hunger_color_sc(pct: float) -> tuple:
-    return (int(220 * pct), int(180 * (1.0 - pct)), 20)
 
 
 class FishRosterPanel:
@@ -112,6 +109,7 @@ class FishRosterPanel:
         self._sc_overlay: pygame.Surface | None = None
         self._sc_overlay_size = (0, 0)
         self._sc_btn_flash: dict[str, int] = {}   # "feed"/"sell" → ticks at press
+        self._sort_press: bool = False             # sort button held state
 
     # ------------------------------------------------------------------
     def toggle(self) -> None:
@@ -126,6 +124,7 @@ class FishRosterPanel:
     def close(self) -> None:
         self.visible = False
         self._selected_fish = None
+        self._sort_press = False
 
     def deselect(self) -> None:
         self._selected_fish = None
@@ -190,11 +189,9 @@ class FishRosterPanel:
             if self._close_btn.inflate(8, 8).collidepoint(ev.pos):
                 self.close()
                 return True
-            # Sort button — cycle through sort modes
+            # Sort button — press state, fires on MOUSEUP
             if self._sort_btn.inflate(4, 8).collidepoint(ev.pos):
-                idx = self._SORT_MODES.index(self._sort_mode)
-                self._sort_mode = self._SORT_MODES[(idx + 1) % len(self._SORT_MODES)]
-                self._scroll = 0
+                self._sort_press = True
                 return True
             row = self._row_at(ev.pos)
             if row is not None:
@@ -212,6 +209,16 @@ class FishRosterPanel:
                 return True
             self.close()
             return None
+
+        if ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+            if self._sort_press:
+                self._sort_press = False
+                if self._sort_btn.inflate(4, 8).collidepoint(ev.pos):
+                    idx = self._SORT_MODES.index(self._sort_mode)
+                    self._sort_mode = self._SORT_MODES[(idx + 1) % len(self._SORT_MODES)]
+                    self._scroll = 0
+            return None
+
         return None
 
     def _sorted_fish(self, fish_list: list) -> list:
@@ -295,10 +302,13 @@ class FishRosterPanel:
         sort_btn_h = header_h - 4
         self._sort_btn = pygame.Rect(hbar.right - 20 - 2 - sort_btn_w,
                                      hbar.top + 2, sort_btn_w, sort_btn_h)
-        pygame.draw.rect(surface, (30, 70, 150), self._sort_btn)
-        pygame.draw.rect(surface, (80, 120, 200), self._sort_btn, 1)
-        surface.blit(slbl_surf, (self._sort_btn.left + 3,
-                                  self._sort_btn.top + (sort_btn_h - slbl_surf.get_height()) // 2))
+        _sort_bg = (15, 45, 110) if self._sort_press else (30, 70, 150)
+        _sort_border = (50, 90, 160) if self._sort_press else (80, 120, 200)
+        pygame.draw.rect(surface, _sort_bg, self._sort_btn)
+        pygame.draw.rect(surface, _sort_border, self._sort_btn, 1)
+        _sox = 1 if self._sort_press else 0
+        surface.blit(slbl_surf, (self._sort_btn.left + 3 + _sox,
+                                  self._sort_btn.top + (sort_btn_h - slbl_surf.get_height()) // 2 + _sox))
 
         # Rows
         self._rows = []
@@ -535,7 +545,8 @@ class FishRosterPanel:
         sy2 = div_y + 3
 
         # ── Stats ─────────────────────────────────────────────────────────
-        lbl_w = fnt.size("Hunger")[0] + 3
+        # All bars: full (100%) = good/green, empty (0%) = bad/red.
+        lbl_w = fnt.size("Life")[0] + 3
         pct_w = fnt.size("100%")[0]  + 3
         bar_x = sx + pad + lbl_w
         bar_w = sx + _SC_W - pad - bar_x - pct_w
@@ -547,10 +558,10 @@ class FishRosterPanel:
         surface.blit(fnt.render(f"{int(hpct * 100)}%", True, WIN_LIGHT), (hp_r.right + 2, sy2 + 1))
         sy2 += 14
 
-        hg = max(0.0, min(1.0, fish.hunger))
-        surface.blit(fnt.render("Hunger", True, WIN_LIGHT), (sx + pad, sy2 + 1))
+        hg = max(0.0, min(1.0, 1.0 - fish.hunger))   # invert: 1.0 = full stomach, 0.0 = starving
+        surface.blit(fnt.render("Fed", True, WIN_LIGHT), (sx + pad, sy2 + 1))
         hg_r = pygame.Rect(bar_x, sy2, bar_w, 11)
-        _draw_stat_bar(surface, hg_r, hg, _hunger_color_sc(hg))
+        _draw_stat_bar(surface, hg_r, hg, _hp_color_sc(hg))
         surface.blit(fnt.render(f"{int(hg * 100)}%", True, WIN_LIGHT), (hg_r.right + 2, sy2 + 1))
         sy2 += 14
 
@@ -563,13 +574,11 @@ class FishRosterPanel:
             age_str = f"Age: {int(age_s / 60)}m"
         surface.blit(fnt.render(age_str, True, (160, 200, 230)), (sx + pad, sy2))
         sy2 += fh + 4
-        # Lifespan progress bar
-        lifespan = max(1.0, fish.lifespan)
-        life_pct = min(1.0, fish.age / lifespan)
-        life_col = (int(20 + 200 * life_pct), int(180 - 160 * life_pct), 30)
+        # Life bar (full = young/lots of lifespan remaining, empty = near natural end)
+        life_pct = max(0.0, min(1.0, 1.0 - fish.age / max(1.0, fish.lifespan)))
         surface.blit(fnt.render("Life", True, WIN_LIGHT), (sx + pad, sy2 + 1))
         life_r = pygame.Rect(bar_x, sy2, bar_w, 11)
-        _draw_stat_bar(surface, life_r, life_pct, life_col)
+        _draw_stat_bar(surface, life_r, life_pct, _hp_color_sc(life_pct))
         surface.blit(fnt.render(f"{int(life_pct * 100)}%", True, WIN_LIGHT),
                      (life_r.right + 2, sy2 + 1))
         sy2 += 14

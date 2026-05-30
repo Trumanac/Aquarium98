@@ -44,17 +44,11 @@ def _species_size_scale(sp: dict) -> float:
 
 
 def pick_random_species() -> dict:
-    """Weighted pick: common ~87%, uncommon ~10%, rare ~2.7%, super-rare ~0.3%."""
-    r = random.random()
-    if r < 0.003:      # 0.3% super-rare
-        sr = super_rare_species()
-        if sr:
-            return random.choice(sr)
-    if r < 0.03:       # 3% rare
-        pool = rare_species()
-        if pool:
-            return random.choice(pool)
-    if r < 0.13:       # 10% uncommon
+    """Weighted pick: common ~90%, uncommon ~10%.
+    Rare and Epic fish are never randomly spawned — they must be purchased
+    from the Fish Shoppe or bred from existing rare fish.
+    """
+    if random.random() < 0.10:
         pool = uncommon_species()
         if pool:
             return random.choice(pool)
@@ -129,6 +123,9 @@ class Fish:
     # Cooldown (s) after a graze session ends before the fish will snap to the glass again.
     # Prevents rapid oscillation when algae hovers just above the 2 % stop threshold.
     graze_cd: float = 0.0
+    # Seconds of continuous good conditions required before health begins recovering.
+    # Resets to ~1 day whenever the fish is hungry or stressed.
+    heal_delay: float = 86400.0
 
 
 def make_fish(tank_w: int, tank_h: int, *,
@@ -959,8 +956,14 @@ def update_biology(f: Fish, dt: float, hunger_rate: float, growth_rate: float,
     f.hunger = min(1.0, f.hunger + dt * 0.000012 * hunger_rate)
     if f.hunger > 0.85:
         f.health = max(0.0, f.health - dt * 0.0000040)
-    elif f.hunger < 0.3 and f.health < 1.0:
-        f.health = min(1.0, f.health + dt * 0.0000020)
+    elif f.hunger < 0.3 and f.stress < 0.20 and f.health < 1.0:
+        # Healing only begins after ~1 day of sustained good conditions.
+        # Any lapse (hunger spike, stress) resets the delay.
+        f.heal_delay = max(0.0, f.heal_delay - dt)
+        if f.heal_delay <= 0:
+            f.health = min(1.0, f.health + dt * 0.0000015)
+    else:
+        f.heal_delay = 86400.0  # reset — consistent care required to heal
 
     if f.adult and f.age > f.lifespan:
         f.health = max(0.0, f.health - dt * 0.0000016)
@@ -1046,6 +1049,8 @@ def fish_to_dict(f: Fish) -> dict:
         "graze_wall":       f.graze_wall,
         "graze_angle":      f.graze_angle,
         "is_grazing":       f.is_grazing,
+        "graze_cd":         f.graze_cd,
+        "heal_delay":       f.heal_delay,
     }
 
 
@@ -1105,4 +1110,6 @@ def fish_from_dict(d: dict, tank_w: int, tank_h: int) -> "Fish | None":
     f.graze_wall    = str(d.get("graze_wall", "bottom"))
     f.graze_angle   = float(d.get("graze_angle", 0.0))
     f.is_grazing    = bool(d.get("is_grazing", False))
+    f.graze_cd      = float(d.get("graze_cd", 0.0))
+    f.heal_delay    = float(d.get("heal_delay", 86400.0))
     return f

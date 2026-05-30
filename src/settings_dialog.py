@@ -67,6 +67,7 @@ class SettingsDialog:
         self._dragging: _Slider | None = None
         self._diff_desc_y: int = 0   # y position for difficulty description line
         self.update_info: dict = {}   # populated by aquarium.py from update_check.get_result()
+        self._update_press: bool = False   # press state for the update/download button
         self.sliders: list[_Slider] = [
             _Slider("opacity",       "Window Opacity",  0.30, 1.00, 0.05),
             _Slider("sound_volume",  "Sound Volume",    0.00, 1.00, 0.01),
@@ -191,24 +192,12 @@ class SettingsDialog:
         if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
             for b in self.buttons:
                 if b.rect.inflate(0, 8).collidepoint(ev.pos):
-                    # "full_reset" and "reset_tank" keep settings open — caller handles
-                    if b.action not in ("full_reset", "reset_tank"):
-                        self.close()
-                    return b.action
+                    b.pressed = True
+                    return None
             # Update button — keep settings open so user sees progress
             if self._update_btn_rect.w > 0 and self._update_btn_rect.collidepoint(ev.pos):
-                dl  = self.update_info.get("dl_status", "idle")
-                if dl == "ready":
-                    return "install_update"
-                if dl in ("idle", "failed"):
-                    ui = self.update_info
-                    if ui.get("checking"):  # request already in flight — ignore click
-                        return None
-                    if not ui or ui.get("check_failed"):
-                        return "check_updates"
-                    if ui.get("newer"):
-                        return "download_update"
-                    return "check_updates"  # re-check when already up to date
+                self._update_press = True
+                return None
             # Sliders checked BEFORE checkboxes: the slider hit-area extends right
             # into the checkbox column, so sliders must win the priority contest.
             for s in self.sliders:
@@ -243,6 +232,30 @@ class SettingsDialog:
                     return None
         elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
             self._dragging = None
+            # Fire any held action button
+            for b in self.buttons:
+                if b.pressed:
+                    b.pressed = False
+                    if b.rect.inflate(0, 8).collidepoint(ev.pos):
+                        if b.action not in ("full_reset", "reset_tank"):
+                            self.close()
+                        return b.action
+            # Fire held update button
+            if self._update_press:
+                self._update_press = False
+                if self._update_btn_rect.w > 0 and self._update_btn_rect.collidepoint(ev.pos):
+                    dl = self.update_info.get("dl_status", "idle")
+                    if dl == "ready":
+                        return "install_update"
+                    if dl in ("idle", "failed"):
+                        ui = self.update_info
+                        if ui.get("checking"):
+                            return None
+                        if not ui or ui.get("check_failed"):
+                            return "check_updates"
+                        if ui.get("newer"):
+                            return "download_update"
+                        return "check_updates"
         elif ev.type == pygame.MOUSEMOTION and self._dragging is not None:
             self._set_from_x(self._dragging, ev.pos[0])
         return None
@@ -483,17 +496,20 @@ class SettingsDialog:
         for b in self.buttons:
             r = b.rect
             if b.action == "full_reset":
-                bg = (210, 160, 160)
+                bg = (210, 160, 160) if not b.pressed else (180, 120, 120)
             elif b.action == "reset_tank":
-                bg = (215, 200, 155)
+                bg = (215, 200, 155) if not b.pressed else (180, 165, 120)
             else:
-                bg = WIN_GRAY
+                bg = (160, 160, 160) if b.pressed else WIN_GRAY
             pygame.draw.rect(screen, bg, r)
-            pygame.draw.line(screen, WIN_LIGHT, r.topleft, (r.right - 1, r.top))
-            pygame.draw.line(screen, WIN_LIGHT, r.topleft, (r.left, r.bottom - 1))
-            pygame.draw.line(screen, WIN_DARK, (r.right - 1, r.top),
+            # Bevel: invert highlight/shadow when pressed
+            tl = WIN_DARK  if b.pressed else WIN_LIGHT
+            br = WIN_LIGHT if b.pressed else WIN_DARK
+            pygame.draw.line(screen, tl, r.topleft, (r.right - 1, r.top))
+            pygame.draw.line(screen, tl, r.topleft, (r.left, r.bottom - 1))
+            pygame.draw.line(screen, br, (r.right - 1, r.top),
                              (r.right - 1, r.bottom - 1))
-            pygame.draw.line(screen, WIN_DARK, (r.left, r.bottom - 1),
+            pygame.draw.line(screen, br, (r.left, r.bottom - 1),
                              (r.right - 1, r.bottom - 1))
             if b.action == "full_reset":
                 tc = (120, 0, 0)
@@ -501,6 +517,7 @@ class SettingsDialog:
                 tc = (90, 55, 0)
             else:
                 tc = (0, 0, 0)
+            ox = 1 if b.pressed else 0
             t = self.font.render(b.label, True, tc)
-            screen.blit(t, (r.left + (r.w - t.get_width()) // 2,
-                            r.top + (r.h - t.get_height()) // 2))
+            screen.blit(t, (r.left + (r.w - t.get_width()) // 2 + ox,
+                            r.top + (r.h - t.get_height()) // 2 + ox))

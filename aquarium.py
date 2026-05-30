@@ -14,6 +14,7 @@ Pipeline:
 from __future__ import annotations
 
 import asyncio
+import collections
 import datetime
 import atexit
 import logging
@@ -31,7 +32,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.14"
+    APP_VERSION = "1.0.15"
 
 import pygame
 
@@ -68,9 +69,9 @@ from src.simulation.environment import (
     spawn_chest_burst, spawn_food_at, update_environment,
 )
 from src.simulation.fish import make_fish, update_biology, update_fish, update_mood
-from src.simulation.species import SPECIES
+from src.simulation.species import SPECIES, common_species
 from src.simulation.population import (
-    cull_dead, ensure_min_population, maybe_change_layer, try_breed,
+    cull_dead, maybe_change_layer, try_breed,
 )
 from src.tray import Tray
 from src.coin_system import (
@@ -400,17 +401,20 @@ async def main() -> int:
             env.algae = max(0.0, min(100.0, float(cfg.get("saved_algae", 0.0))))
 
         if not fish_list:
-            # Fresh start: randomise decor only on the very first ever launch;
-            # subsequent empty-tank starts (persist_state off, all fish died, etc.)
-            # keep whatever castle/plant the user last chose.
+            # First-ever launch: randomise decor once.
             if not cfg.get("_tank_initialized", False):
                 cfg["castle_choice"] = random.randint(1, 5)
-            for _ in range(int(cfg.get("start_fish", 6))):
-                f = make_fish(tr.w, tr.h,
-                              existing_names={g.name for g in fish_list},
-                              lifespan_base=float(cfg.get("lifespan_base", 1814400)))
-                fish_list.append(f)
-                mark_seen(cfg, f.sp.get("name", ""))
+            # Always start with 4 common fish: a guaranteed breeding pair
+            # (same species) plus 2 more for variety.
+            _commons = common_species()
+            _pair_sp = random.choice(_commons)
+            for _sp in [_pair_sp, _pair_sp,
+                        random.choice(_commons), random.choice(_commons)]:
+                _sf = make_fish(tr.w, tr.h, species=_sp,
+                                existing_names={g.name for g in fish_list},
+                                lifespan_base=float(cfg.get("lifespan_base", 1814400)))
+                fish_list.append(_sf)
+                mark_seen(cfg, _sf.sp.get("name", ""))
                 cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + 1
         # Remember that the tank has been initialised at least once, so decor
         # is never re-randomised unless the user does a full reset.
@@ -460,6 +464,7 @@ async def main() -> int:
         sim_dt = 1.0 / SIM_HZ
         last_t = time.perf_counter()
         last_pos_save = 0.0
+        _night_last_t = 0.0   # throttle real-time day/night update to 1 Hz
 
         paused = False
         hidden = False
@@ -482,7 +487,7 @@ async def main() -> int:
             pygame.K_LEFT, pygame.K_RIGHT, pygame.K_LEFT, pygame.K_RIGHT,
             pygame.K_b, pygame.K_a,
         ]
-        _konami_buf: list[int] = []
+        _konami_buf: collections.deque = collections.deque(maxlen=len(_KONAMI_SEQ))
 
         # Title-bar click counting (5 clicks in 30 s → DVD mode)
         _title_click_times: list[float] = []
@@ -565,6 +570,13 @@ async def main() -> int:
             "Daily login streaks add to your progress. Come back tomorrow!",
             "Press M to toggle the music player — ambient tunes await!",
             "Try typing the Konami Code... \u2191\u2191\u2193\u2193\u2190\u2192\u2190\u2192BA",
+            "Fish only breed with their own kind \u2014 keep two of the same species well-fed and happy.",
+            "Need a breeding pair? Head to the Fish Shoppe (S) and buy a second of any species you own.",
+            "Flush with coins? Visit the Fish Shoppe and spend them on a brand-new species!",
+            "Right-click \u2192 Settings to swap the castle and plant style \u2014 make the tank yours.",
+            "Algae-eater species graze right off the glass \u2014 a great hands-free tank cleaner!",
+            "Some fish eat both algae and flakes \u2014 they'll switch to food when the glass is clean.",
+            "Overfeeding raises algae over time \u2014 handy if you keep algae eaters, risky if you don't!",
         ]
         tip_countdown = 15.0  # seconds until first idle tip
         _tip_idx      = -1    # cycles through _TIPS sequentially
@@ -714,19 +726,21 @@ async def main() -> int:
                 food_mode = False
                 clean_mode = False
                 cursor_mgr.set_mode("normal")
-                added = ensure_min_population(fish_list, tr.w, tr.h, cfg)
-                cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + added
-                extra = int(cfg.get("start_fish", 6)) - len(fish_list)
-                for _ in range(max(0, extra)):
-                    f_new = make_fish(tr.w, tr.h,
-                                      existing_names={g.name for g in fish_list},
-                                      lifespan_base=float(cfg.get("lifespan_base", 1814400)))
-                    fish_list.append(f_new)
-                    cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + 1
                 for f_reset in fish_list:
                     mark_seen(cfg, f_reset.sp.get("name", ""))
                 # Randomise decor for the freshly reset tank
                 cfg["castle_choice"] = random.randint(1, 5)
+                # Seed with a fresh starter set: guaranteed breeding pair + 2 variety.
+                _commons = common_species()
+                _pair_sp = random.choice(_commons)
+                for _sp in [_pair_sp, _pair_sp,
+                            random.choice(_commons), random.choice(_commons)]:
+                    _sf = make_fish(tr.w, tr.h, species=_sp,
+                                    existing_names={g.name for g in fish_list},
+                                    lifespan_base=float(cfg.get("lifespan_base", 1814400)))
+                    fish_list.append(_sf)
+                    mark_seen(cfg, _sf.sp.get("name", ""))
+                    cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + 1
                 # Mark the tank as initialised so the next startup does not
                 # re-randomise the castle (avoids double-randomisation when the
                 # user exits shortly after a full reset).
@@ -1380,9 +1394,7 @@ async def main() -> int:
                 elif ev.type == pygame.KEYDOWN:
                     # ── Easter egg: Konami code ──────────────────────────
                     _konami_buf.append(ev.key)
-                    if len(_konami_buf) > len(_KONAMI_SEQ):
-                        _konami_buf.pop(0)
-                    if _konami_buf == _KONAMI_SEQ:
+                    if list(_konami_buf) == _KONAMI_SEQ:
                         _konami_buf.clear()
                         _fire_achievement("konami_code")
                         set_status("\u2191\u2191\u2193\u2193\u2190\u2192\u2190\u2192BA \u2014 The Code is real!", 6.0)
@@ -1398,8 +1410,8 @@ async def main() -> int:
                             food_y = max(20.0, target.y - 40.0)
                             n = spawn_food_at(env, food_x, food_y,
                                               max_active=_food_cap())
-                            hunger_pct = int(target.hunger * 100)
-                            label = f"hungry ({hunger_pct}%)" if target.hunger > 0.15 else "full"
+                            fed_pct = int((1.0 - target.hunger) * 100)
+                            label = f"fed ({fed_pct}%)" if target.hunger > 0.15 else "full"
                             set_status(f"Feeding {target.name} \u2014 {label}")
                         else:
                             set_status("No fish to feed!")
@@ -1520,7 +1532,7 @@ async def main() -> int:
                                             sound.play_single_coin()
                                     else:
                                         clicked = None
-                                        for f in reversed(fish_list):
+                                        for f in sorted(fish_list, key=lambda f: f.layer):
                                             if fish_screen_rect(f, tr).collidepoint(mx, my):
                                                 clicked = f
                                                 break
@@ -1836,11 +1848,6 @@ async def main() -> int:
                                   + (f" (child of {juvenile.born_from[0]} & {juvenile.born_from[1]})"
                                      if juvenile.born_from else ""),
                                   "birth")
-                    prev_count = len(fish_list)
-                    added = ensure_min_population(fish_list, env.tank_w, env.tank_h, cfg)
-                    cfg["stat_total_fish"] = int(cfg.get("stat_total_fish", 0)) + added
-                    for _fa in fish_list[prev_count:]:
-                        mark_seen(cfg, _fa.sp.get("name", ""))
 
                     # ---- Algae danger warning (fires once when crossing 80%) ----
                     if float(env.algae) >= 80.0:
@@ -1867,7 +1874,8 @@ async def main() -> int:
                     sim_accum = 0.0
 
             # -------- real-time day/night override --------
-            if cfg.get("night_cycle", True):
+            if cfg.get("night_cycle", True) and now - _night_last_t >= 1.0:
+                _night_last_t = now
                 _wall_time = datetime.datetime.now()
                 hour = _wall_time.hour + _wall_time.minute / 60.0 + _wall_time.second / 3600.0
                 # Smooth sine: 0 at noon, peaks at midnight; cap at 0.28
@@ -2090,6 +2098,12 @@ async def main() -> int:
             cfg["window_x"], cfg["window_y"] = pos
         w, h = surface.get_size()
         cfg["window_w"], cfg["window_h"] = w, h
+        # Flush any playtime that hasn't been accumulated yet (up to ~60 s)
+        if stat_accum > 0:
+            cfg["stat_total_days"] = float(cfg.get("stat_total_days", 0)) + stat_accum / 86400.0
+            cfg["stat_peak_fish"]  = max(int(cfg.get("stat_peak_fish", 0)), len(fish_list))
+            if int(cfg.get("difficulty", 2)) == 5 and len(fish_list) > 0:
+                cfg["stat_nightmare_days"] = float(cfg.get("stat_nightmare_days", 0.0)) + stat_accum / 86400.0
         cfg_mod.save(cfg)
         if cfg.get("persist_state", True):
             cfg_mod.save_fish_state(fish_list)

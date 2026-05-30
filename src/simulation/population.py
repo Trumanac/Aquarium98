@@ -37,10 +37,15 @@ def try_breed(fish_list: list[Fish], tank_w: int, tank_h: int, cfg: dict,
     if not same_sp:
         return None
     b = random.choice(same_sp)
-    a.breed_cd = 120.0
-    b.breed_cd = 120.0
+    # Proximity check: parents must be within ~220 px of each other
+    dx = a.x - b.x
+    dy = a.y - b.y
+    if dx * dx + dy * dy > 220 * 220:
+        return None
     # Offspring are always the same species as the parents — no random downgrade.
     breed_sp = a.sp
+    a.breed_cd = 120.0
+    b.breed_cd = 120.0
     juvenile = make_fish(tank_w, tank_h, species=breed_sp,
                          x=(a.x + b.x) / 2, y=(a.y + b.y) / 2,
                          scale=0.45,
@@ -64,9 +69,12 @@ def ensure_min_population(fish_list: list[Fish], tank_w: int, tank_h: int,
     # Never exceed max_fish — prevents a silent cap breach when min > max
     target = min(target, int(cfg.get("max_fish", 25)))
     added = 0
-    # Build the pool of species already in the tank; fall back to commons if empty
+    # Build the pool of species already in the tank; fall back to commons if empty.
+    # Never auto-spawn rare/epic fish — those enter only via purchase or breeding.
     existing_species = list({id(f.sp): f.sp for f in fish_list}.values())
-    pool = existing_species if existing_species else common_species()
+    pool_filtered = [sp for sp in existing_species
+                     if not (sp.get("rare") or sp.get("super_rare"))]
+    pool = pool_filtered if pool_filtered else common_species()
     while len(fish_list) < target:
         new_f = make_fish(tank_w, tank_h,
                           species=random.choice(pool),

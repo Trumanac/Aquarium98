@@ -184,6 +184,10 @@ class FishStorePanel:
         self._scroll_bb: int = 0                   # buy-back list scroll offset
         self._tab_rects: list[tuple[pygame.Rect, str]] = []
         self._buyback_rows: list[tuple[pygame.Rect, dict]] = []
+        # Button press states (DOWN sets, UP fires + clears)
+        self._buy_press_idx: int  = -1    # slot index being held (-1 = none)
+        self._restock_press: bool = False
+        self._sort_press:    bool = False
 
         # Rects populated in draw() for hit-testing
         self._panel_rect  = pygame.Rect(0, 0, 0, 0)
@@ -209,6 +213,9 @@ class FishStorePanel:
 
     def close(self) -> None:
         self.visible = False
+        self._buy_press_idx = -1
+        self._restock_press = False
+        self._sort_press    = False
 
     def toggle(self, cfg: dict, screen_size: tuple[int, int]) -> None:
         if self.visible:
@@ -329,17 +336,18 @@ class FishStorePanel:
                 self.close()
                 return None
 
-            # Buy buttons
+            # Buy buttons (press state — fires on MOUSEUP)
             for i, r in enumerate(self._buy_rects):
                 if r.collidepoint(mx, my) and i < len(self.slots):
                     slot = self.slots[i]
                     if not slot.bought:
-                        return ("buy", i, slot.species, slot.price)
+                        self._buy_press_idx = i
+                        return ("consume",)
 
-            # Restock button
+            # Restock button (press state — fires on MOUSEUP)
             if self._restock_btn.collidepoint(mx, my):
-                cost = _RESTOCK_COST.get(int(cfg.get("difficulty", 2)), 15)
-                return ("restock", cost)
+                self._restock_press = True
+                return ("consume",)
 
             # Tab strip
             for tab_r, tab_key in self._tab_rects:
@@ -365,11 +373,9 @@ class FishStorePanel:
                     if row_r.collidepoint(mx, my):
                         return ("profile", fish)
 
-                # Sell sort button
+                # Sell sort button (press state — fires on MOUSEUP)
                 if self._sell_sort_btn.collidepoint(mx, my):
-                    idx = _SELL_SORT_MODES.index(self._sell_sort_mode)
-                    self._sell_sort_mode = _SELL_SORT_MODES[(idx + 1) % len(_SELL_SORT_MODES)]
-                    self._scroll = 0
+                    self._sort_press = True
                     return ("consume",)
 
             # Scroll arrows (shared between both tabs)
@@ -391,6 +397,32 @@ class FishStorePanel:
             # Absorb all unhandled clicks that land inside the panel so they
             # don't fall through to fish or bubbles rendered behind it.
             return ("consume",)
+
+        if ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+            mx, my = ev.pos
+            if self._buy_press_idx >= 0:
+                idx = self._buy_press_idx
+                self._buy_press_idx = -1
+                if idx < len(self._buy_rects) and self._buy_rects[idx].collidepoint(mx, my):
+                    if idx < len(self.slots) and not self.slots[idx].bought:
+                        slot = self.slots[idx]
+                        return ("buy", idx, slot.species, slot.price)
+            if self._restock_press:
+                self._restock_press = False
+                if self._restock_btn.collidepoint(mx, my):
+                    cost = _RESTOCK_COST.get(int(cfg.get("difficulty", 2)), 15)
+                    return ("restock", cost)
+            if self._sort_press:
+                self._sort_press = False
+                if self._sell_sort_btn.collidepoint(mx, my):
+                    sort_idx = _SELL_SORT_MODES.index(self._sell_sort_mode)
+                    self._sell_sort_mode = _SELL_SORT_MODES[(sort_idx + 1) % len(_SELL_SORT_MODES)]
+                    self._scroll = 0
+            # Clear any stray press states
+            self._buy_press_idx = -1
+            self._restock_press = False
+            self._sort_press    = False
+            return None
 
         if ev.type == pygame.MOUSEWHEEL:
             if self._panel_rect.collidepoint(pygame.mouse.get_pos()):
@@ -566,7 +598,8 @@ class FishStorePanel:
             if tank_full:
                 _btn(surface, buy_r, "Tank Full", self.font, enabled=False)
             else:
-                _btn(surface, buy_r, "Buy", self.font, enabled=enough)
+                _btn(surface, buy_r, "Buy", self.font, enabled=enough,
+                     pressed=(self._buy_press_idx == i))
 
         # ── Restock row ──────────────────────────────────────────
         restock_y = slot_y + slot_area_h + 6
@@ -588,7 +621,8 @@ class FishStorePanel:
         rbtn = pygame.Rect(p.right - _PAD - rbtn_w, restock_y + 2, rbtn_w, 22)
         self._restock_btn = rbtn
         enough_r = int(cfg.get("coins", 0)) >= rcost
-        _btn(surface, rbtn, f"Restock ({rcost})", self.font, enabled=enough_r)
+        _btn(surface, rbtn, f"Restock ({rcost})", self.font, enabled=enough_r,
+             pressed=self._restock_press)
 
         # ── Separator ────────────────────────────────────────────
         sep_y = restock_y + _RESTOCK_H + 4
@@ -635,7 +669,7 @@ class FishStorePanel:
             _sort_w   = max(58, self.font.size(_sort_lbl)[0] + 10)
             _sort_btn_r = pygame.Rect(p.right - _PAD - 16 - 4 - _sort_w, tab_y, _sort_w, _TAB_H)
             self._sell_sort_btn = _sort_btn_r
-            _btn(surface, _sort_btn_r, _sort_lbl, self.font)
+            _btn(surface, _sort_btn_r, _sort_lbl, self.font, pressed=self._sort_press)
 
         # ── List area (sell or buy-back) ─────────────────────────
         sell_list_y = tab_y + _TAB_H + 2

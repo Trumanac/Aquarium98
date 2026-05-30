@@ -61,6 +61,24 @@ jobs:
         # pygbag writes the finished site into build/web/
         run: python -m pygbag --build --app_name "Aquarium 98" web_main.py
 
+      - name: Fix BrowserFS (bundle locally; pygbag CDN is missing this file)
+        run: |
+          # pygbag 0.9.3's generated index.html contains a <script> tag pointing to
+          # https://pygame-web.github.io/cdn/0.9.3//browserfs.min.js (note double
+          # slash AND the file is absent from that CDN), which triggers
+          # ERR_BLOCKED_BY_ORB in Chrome and hangs the loading screen forever.
+          # Fix: download BrowserFS 1.4.3 from jsDelivr and serve it locally.
+          # Running BEFORE pwa_inject.py so the SW pre-caches browserfs.min.js too.
+          curl -sSfL \
+            "https://cdn.jsdelivr.net/npm/browserfs@1.4.3/dist/browserfs.min.js" \
+            -o build/web/browserfs.min.js
+          # Replace the broken CDN URL with the local copy.
+          sed -i \
+            's|src="https://pygame-web.github.io/cdn/[^"]*browserfs\.min\.js"|src="./browserfs.min.js"|g' \
+            build/web/index.html
+          echo "BrowserFS fix applied:"
+          grep -n "browserfs" build/web/index.html
+
       - name: Inject PWA (manifest + service worker + icons)
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")

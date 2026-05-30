@@ -9,6 +9,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.15] — 2026-05-30
+
+### Changed
+- **Status bars standardised** — "Hunger" bar renamed "Fed" and inverted so a full green bar means well-fed (100 %) and an empty red bar means starving (0 %), matching the same *full = good* convention as the HP bar.
+- **Life bar added to Fish Profile** — the Fish Profile popup (click any fish) now shows a third "Life" bar (full green = just born, empty red = near natural end of lifespan), replacing the previous raw age/lifespan text line. The roster side card Life bar is similarly inverted to the same convention.
+- **How to Play updated** — Mood & Rarity page gains a "Status Bars" section with mini bar previews explaining HP / Fed / Life. Tips and panel descriptions updated to match the new terminology.
+- **Web version BrowserFS fix** — CI now downloads `browserfs.min.js` from jsDelivr and patches `index.html` so the web build no longer breaks when the upstream CDN URL is unavailable.
+
+---
+
 ## [1.0.14] — 2026-05-29
 
 ### Added

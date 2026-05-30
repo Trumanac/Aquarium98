@@ -383,8 +383,8 @@ class FishSpriteCache:
     """Extracts + scales per-fish frame surfaces from a spritesheet.
 
     Spritesheet is 3 cols × 3 rows; we use the top 6 frames (rows 0-1).
-    draw_w = floor(92 * LAYER_SCALE[layer] * fish.scale + 0.5)
-    draw_h = floor(68 * LAYER_SCALE[layer] * fish.scale + 0.5)
+    draw_w = max(14, floor(150 * LAYER_SCALE[layer] * fish.scale * sp_ss + 0.5))
+    draw_h = max(10, floor(110 * LAYER_SCALE[layer] * fish.scale * sp_ss + 0.5))
     No colour tinting — sheets are pre-coloured art.
     health < 0.6 → alpha fade applied at blit time (not cached).
     """
