@@ -1627,23 +1627,25 @@ async def main() -> int:
                                 env.tank_w = _new_tr.w
                                 env.tank_h = _new_tr.h
                                 tr = _new_tr
-                            elif not locked and win_mod.in_title_bar(mx, my, *_sz):
-                                drag_mode = "move"
-                                pygame.event.set_grab(True)
-                                drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
-                                drag_rel_accum = (0, 0)
-                                log.debug("drag_mode=move drag_win_start=%s", drag_win_start)
+                            elif win_mod.in_title_bar(mx, my, *_sz):
                                 # Easter egg: 5 title-bar clicks in 30 s → DVD mode
+                                # (counts regardless of lock state)
                                 _now_tc = time.perf_counter()
                                 _title_click_times.append(_now_tc)
                                 _title_click_times[:] = [
                                     t for t in _title_click_times if _now_tc - t <= 30.0
                                 ]
-                                if len(_title_click_times) >= 5 and _dvd_logo is not None:
+                                if len(_title_click_times) >= 5:
                                     _title_click_times.clear()
                                     _fire_achievement("dvd_mode")
                                     set_status("DVD mode! Bouncing for 30 seconds...", 4.0)
                                     _start_dvd_mode()
+                                if not locked:
+                                    drag_mode = "move"
+                                    pygame.event.set_grab(True)
+                                    drag_win_start = win_mod.get_position(sdl_win) or (0, 0)
+                                    drag_rel_accum = (0, 0)
+                                    log.debug("drag_mode=move drag_win_start=%s", drag_win_start)
                     if ev.button == 3:
                         items = feed_menu()
                         # Reflect current toggle state
@@ -2068,9 +2070,10 @@ async def main() -> int:
             info_dlg.draw(surface)
 
             # ── DVD bounce overlay ───────────────────────────────────────
-            if _dvd_timer > 0 and _dvd_logo is not None:
+            if _dvd_timer > 0:
                 _dvd_timer -= frame_dt
-                lw4, lh4 = _dvd_logo.get_size()
+                lw4 = _dvd_logo.get_width()  if _dvd_logo else 100
+                lh4 = _dvd_logo.get_height() if _dvd_logo else 44
                 _dvd_pos[0] += _dvd_vel[0]
                 _dvd_pos[1] += _dvd_vel[1]
                 cw4, ch4 = surface.get_size()
@@ -2082,7 +2085,8 @@ async def main() -> int:
                     _dvd_vel[1] = abs(_dvd_vel[1]);  _dvd_pos[1] = 0.0
                 elif _dvd_pos[1] + lh4 >= ch4:
                     _dvd_vel[1] = -abs(_dvd_vel[1]); _dvd_pos[1] = float(ch4 - lh4)
-                surface.blit(_dvd_logo, (int(_dvd_pos[0]), int(_dvd_pos[1])))
+                if _dvd_logo is not None:
+                    surface.blit(_dvd_logo, (int(_dvd_pos[0]), int(_dvd_pos[1])))
 
             cursor_mgr.draw(surface)
             pygame.display.flip()
