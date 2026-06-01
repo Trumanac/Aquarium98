@@ -104,14 +104,6 @@ def fish_sell_price(f) -> int:
     else:
         base = 15.0
 
-    # Mood multiplier
-    mood_mult = {
-        "happy":    1.3,
-        "content":  1.0,
-        "stressed": 0.7,
-        "hungry":   0.5,
-    }.get(getattr(f, "mood", "content"), 1.0)
-
     # Health fraction (clamped to avoid near-zero results)
     health_frac = max(0.3, getattr(f, "health", 1.0))
 
@@ -126,4 +118,4 @@ def fish_sell_price(f) -> int:
     else:
         age_bonus = 1.5
 
-    return max(1, round(base * mood_mult * health_frac * age_bonus))
+    return max(1, round(base * health_frac * age_bonus))

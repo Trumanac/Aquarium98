@@ -32,7 +32,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.15"
+    APP_VERSION = "1.0.16"
 
 import pygame
 
@@ -420,6 +420,12 @@ async def main() -> int:
         # is never re-randomised unless the user does a full reset.
         cfg["_tank_initialized"] = True
 
+        def _food_cap() -> int:
+            """Active food cap: practically unlimited in normal play, capped in Nightmare."""
+            if int(cfg.get("difficulty", 2)) == 5:
+                return 40   # Nightmare: scarce food intentional
+            return 350      # ~70s of non-stop spam at 5 flakes/click before any cap
+
         # Auto-food drop welcome-back bonus (when returning after a gap)
         if _welcome_back_msg and "missed you" in _welcome_back_msg:
             for _ in range(3):
@@ -543,12 +549,6 @@ async def main() -> int:
             nonlocal status_msg, status_timer
             status_msg   = msg
             status_timer = secs
-
-        def _food_cap() -> int:
-            """Active food cap: practically unlimited in normal play, capped in Nightmare."""
-            if int(cfg.get("difficulty", 2)) == 5:
-                return 40   # Nightmare: scarce food intentional
-            return 350      # ~70s of non-stop spam at 5 flakes/click before any cap
 
         # Rotating idle tips shown when the status bar has been quiet a while
         _TIPS = [

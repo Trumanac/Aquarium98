@@ -9,6 +9,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.16] — 2026-06-01
+
+### Fixed
+- **Fatal startup crash when returning after a gap** — `_food_cap()` was called during the welcome-back food-drop bonus (startup initialisation) before the function was defined in the enclosing scope, raising `NameError`. Moved the definition to before its first use so the auto-food bonus spawns correctly on all platforms.
+
+---
+
 ## [1.0.15] — 2026-05-30
 
 ### Changed
