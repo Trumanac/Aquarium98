@@ -43,25 +43,15 @@ def _load_font() -> pygame.font.Font:
 # ── window init ───────────────────────────────────────────────────────────────
 def init_window(cfg: dict) -> tuple[pygame.Surface, None, pygame.font.Font]:
     """Create a standard pygame display surface for the browser canvas."""
-    import sys
-
     pygame.display.init()
     pygame.font.init()
 
-    if sys.platform == "emscripten":
-        # Use the actual browser viewport so the canvas fills the window
-        # at native resolution instead of rendering at a fixed small size.
-        try:
-            import platform as _plt
-            vw = int(_plt.window.innerWidth)
-            vh = int(_plt.window.innerHeight)
-            w = max(MIN_W, vw if vw >= MIN_W else 1280)
-            h = max(MIN_H, vh if vh >= MIN_H else 720)
-        except Exception:
-            w, h = 1280, 720
-    else:
-        w = max(MIN_W, min(MAX_W, int(cfg.get("window_w", 512))))
-        h = max(MIN_H, min(MAX_H, int(cfg.get("window_h", 384))))
+    # Web: start at a known-safe HD size.  Pygbag's window_resize() fires a
+    # WINDOWRESIZED event shortly after startup; the main-loop handler (in
+    # aquarium.py) then resizes to the actual viewport.  MAX_W/MAX_H are set
+    # to 7680×4320 so that resize is never clamped away.
+    w = max(MIN_W, min(MAX_W, int(cfg.get("window_w", 1280))))
+    h = max(MIN_H, min(MAX_H, int(cfg.get("window_h", 720))))
 
     surface = pygame.display.set_mode((w, h))
     pygame.display.set_caption("Aquarium 98")
