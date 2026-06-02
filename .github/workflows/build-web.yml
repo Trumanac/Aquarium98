@@ -58,8 +58,14 @@ jobs:
           find . -maxdepth 1 -name "*.py" -exec sed -i 's/\.mp3"/\.ogg"/g' {} +
 
       - name: Build
-        # pygbag writes the finished site into build/web/
-        run: python -m pygbag --build --app_name "Aquarium 98" web_main.py
+        # pygbag's template (custom_site) looks for assets/main.py in the
+        # archive.  It uses whatever filename is passed on the CLI, so passing
+        # web_main.py produces assets/web_main.py and shell.source() can't find
+        # the entry point.  Copy to main.py for the build, then remove it.
+        run: |
+          cp web_main.py main.py
+          python -m pygbag --build --app_name "Aquarium 98" main.py
+          rm -f main.py
 
       - name: Fix BrowserFS (bundle locally; pygbag CDN is missing this file)
         run: |
