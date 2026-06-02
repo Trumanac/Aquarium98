@@ -85,25 +85,25 @@ jobs:
           echo "BrowserFS fix applied:"
           grep -n "browserfs" build/web/index.html
 
-      - name: Patch HTML (fullscreen CSS)
+      - name: Patch HTML (cosmetic CSS only)
         run: |
-          # Do NOT touch fb_ar — setting it to 0 causes pygbag's window_resize()
-          # to divide by zero and produce a 0×0 canvas before Python runs.
-          # The Python init_window() already detects the viewport via
-          # platform.window.innerWidth and resizes the SDL canvas at startup.
+          # IMPORTANT: Do NOT add html/body overflow:hidden or height:100% rules.
+          # When html/body have overflow:hidden, Chrome propagates that to the
+          # viewport, which can clip the position:fixed infobox that shows the
+          # "Ready to start – click to continue" prompt.  Without it visible the
+          # user can never satisfy the UME check and the game never loads.
+          #
+          # The canvas already fills the viewport via its own CSS:
+          #   position:absolute; top:0; bottom:0; left:0; right:0
+          # No html/body height change is needed for that to work.
 
-          # Fix body/html so canvas height:100% resolves to the full viewport height.
+          # Fix invalid CSS value (padding: none → padding: 0) — harmless.
           sed -i 's/padding: none;/padding: 0;/' build/web/index.html
-          sed -i 's/background-color:powderblue;/background-color: #000000;/' build/web/index.html
-
-          # Insert html { height:100%; overflow:hidden } before the body rule,
-          # and add the same properties to body.
-          sed -i \
-            's/        body {/        html {\n            height: 100%;\n            overflow: hidden;\n        }\n\n        body {\n            height: 100%;\n            overflow: hidden;/' \
-            build/web/index.html
+          # Replace the loading-screen background colour — cosmetic only.
+          sed -i 's/background-color:powderblue;/background-color: #000080;/' build/web/index.html
 
           echo "HTML patch applied:"
-          grep -n "height: 100\|overflow\|background-color" build/web/index.html | head -20
+          grep -n "padding\|background-color" build/web/index.html | head -10
 
       - name: Inject PWA (manifest + service worker + icons)
         run: |
