@@ -177,15 +177,6 @@ def _patch_html() -> None:
         print("  index.html already patched — skipping.")
         return
 
-    # Disable pygbag's built-in UME block so window.MM.UME starts as true,
-    # allowing the explicit click handler above to remain the sole gate.
-    patched = html.replace("ume_block : 1", "ume_block : 0", 1)
-    if patched == html:
-        print("  index.html  (ume_block not found — skipping that patch)")
-    else:
-        html = patched
-        print("  index.html  (ume_block patched to 0)")
-
     html = html.replace("</head>", _PWA_HEAD + "\n</head>", 1)
     html_path.write_text(html, encoding="utf-8")
     print("  index.html  (manifest + SW registration + UME fix injected)")
