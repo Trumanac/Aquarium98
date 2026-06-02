@@ -143,35 +143,43 @@ _PWA_HEAD = """\
           .catch(e => console.warn("[SW] registration failed:", e));
       });
     }
-  </script>
   </script>"""
 
-# The exact while-loop text that pygbag 0.9.3 emits inside index.html.
-# MM.UME is a read-only getter on Pygbag's MediaManager object — attempting
-# to set it from JavaScript (window.MM.UME = true) silently fails, so the
-# loop never exits.  We patch it out of the generated HTML at build time.
+# ── Python template patches ────────────────────────────────────────────────────
+
+# Patch 1 — remove the MM.UME blocking loop.
+# MM.UME is a read-only getter on Pygbag's MediaManager; setting it from JS
+# silently fails, so the loop never exits.
 _UME_OLD = (
     "        while not platform.window.MM.UME:\n"
     "            await asyncio.sleep(.1)\n"
 )
-# Two things are patched here:
-# 1. The MM.UME blocking loop is removed — it never exits in most browsers.
-# 2. aio.pep0723.check_list and pip_install are replaced with no-ops so the
-#    startup does not hang waiting for the pygbag CDN package-index download.
-#    All game dependencies are bundled in the tar.gz archive, so network-based
-#    package preloading is unnecessary.
 _UME_NEW = (
-    "        # pwa_inject.py: MM.UME gate + CDN preload both bypassed.\n"
-    "        try:\n"
-    "            import aio.pep0723 as _p723\n"
-    "            async def _noop_list(*_a, **_kw): return []\n"
-    "            async def _noop_pip(*_a, **_kw): pass\n"
-    "            _p723.check_list = _noop_list\n"
-    "            _p723.pip_install = _noop_pip\n"
-    "        except Exception as _e:\n"
-    "            print('pwa_inject preload bypass failed:', _e)\n"
+    "        # pwa_inject.py: MM.UME gate bypassed.\n"
     "        platform.window.infobox.innerText = 'Starting Aquarium 98...'\n"
     "        await asyncio.sleep(0)\n"
+)
+
+# Patch 2 — bypass the CDN package-index download that hangs startup.
+# preload_code() calls check_list() which calls async_repos() which fetches a
+# JSON index from pygame-web.github.io.  That request hangs indefinitely in
+# many browsers/networks.  All game deps are bundled in the archive, so this
+# network step is unnecessary.  We inject no-op stubs right before shell.source
+# so they are ALWAYS in place regardless of the MM.UME branch above.
+_SOURCE_OLD = (
+    "    await shell.source(main, callback=ui_callback)\n"
+)
+_SOURCE_NEW = (
+    "    # pwa_inject.py: bypass CDN preloading — all deps are bundled.\n"
+    "    try:\n"
+    "        import aio.pep0723 as _p723\n"
+    "        async def _noop_cl(*_a, **_kw): return []\n"
+    "        async def _noop_pi(*_a, **_kw): pass\n"
+    "        _p723.check_list = _noop_cl\n"
+    "        _p723.pip_install = _noop_pi\n"
+    "    except Exception as _pwa_e:\n"
+    "        print('pwa preload bypass:', _pwa_e)\n"
+    "    await shell.source(main, callback=ui_callback)\n"
 )
 
 
@@ -185,12 +193,19 @@ def _patch_html() -> None:
         print("  index.html already patched — skipping.")
         return
 
-    # Patch out the UME blocking loop from the pygbag template Python code.
+    # Patch 1: remove UME blocking loop.
     if _UME_OLD in html:
         html = html.replace(_UME_OLD, _UME_NEW, 1)
         print("  index.html  (UME blocking loop removed)")
     else:
-        print("  index.html  WARNING: UME loop pattern not found — template may have changed")
+        print("  index.html  WARNING: UME loop not found — template may have changed")
+
+    # Patch 2: inject preload bypass unconditionally before shell.source.
+    if _SOURCE_OLD in html:
+        html = html.replace(_SOURCE_OLD, _SOURCE_NEW, 1)
+        print("  index.html  (CDN preload bypass injected)")
+    else:
+        print("  index.html  WARNING: shell.source line not found — template may have changed")
 
     html = html.replace("</head>", _PWA_HEAD + "\n</head>", 1)
     html_path.write_text(html, encoding="utf-8")
