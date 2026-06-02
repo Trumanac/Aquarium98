@@ -160,25 +160,32 @@ _UME_NEW = (
     "        await asyncio.sleep(0)\n"
 )
 
-# Patch 2 — bypass the CDN package-index download that hangs startup.
-# preload_code() calls check_list() which calls async_repos() which fetches a
-# JSON index from pygame-web.github.io.  That request hangs indefinitely in
-# many browsers/networks.  All game deps are bundled in the archive, so this
-# network step is unnecessary.  We inject no-op stubs right before shell.source
-# so they are ALWAYS in place regardless of the MM.UME branch above.
+# Patch 2 — replace TopLevel_async_handler.preload_code with a no-op.
+# preload_code scans imports, calls async_repos (CDN) and pip_install (PyPI).
+# Even though async_repos completes quickly, pip_install for our bundled
+# modules (window_web, aquarium, src…) tries to download from PyPI and hangs.
+# TopLevel_async_handler is already in scope (defined in cpythonrc.py loaded
+# from CDN before the template runs), so we can patch it directly — no fragile
+# module attribute tricks needed.
 _SOURCE_OLD = (
     "    await shell.source(main, callback=ui_callback)\n"
 )
 _SOURCE_NEW = (
-    "    # pwa_inject.py: bypass CDN preloading — all deps are bundled.\n"
+    "    # pwa_inject.py: replace preload_code with a no-op.\n"
     "    try:\n"
-    "        import aio.pep0723 as _p723\n"
-    "        async def _noop_cl(*_a, **_kw): return []\n"
-    "        async def _noop_pi(*_a, **_kw): pass\n"
-    "        _p723.check_list = _noop_cl\n"
-    "        _p723.pip_install = _noop_pi\n"
+    "        async def _fast_preload(cls, code=None, callback=None,\n"
+    "                                loaderhome='.', hint=''):\n"
+    "            try:\n"
+    "                import aio.pep0723\n"
+    "                aio.pep0723.Config.imports_ready = True\n"
+    "            except Exception:\n"
+    "                pass\n"
+    "            return True\n"
+    "        TopLevel_async_handler.preload_code = classmethod(_fast_preload)\n"
     "    except Exception as _pwa_e:\n"
-    "        print('pwa preload bypass:', _pwa_e)\n"
+    "        print('pwa preload_code bypass:', _pwa_e)\n"
+    "    platform.window.infobox.innerText = 'Loading game...'\n"
+    "    await asyncio.sleep(0)\n"
     "    await shell.source(main, callback=ui_callback)\n"
 )
 
