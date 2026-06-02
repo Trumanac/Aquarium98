@@ -144,27 +144,23 @@ _PWA_HEAD = """\
       });
     }
   </script>
-  <script>
-    // Pygbag 0.9.3 UME fix: the built-in click detection for window.MM.UME
-    // does not fire reliably, so the Python loop `while not MM.UME` never exits.
-    // Listen in capture phase so we catch events even over high-z overlays
-    // (e.g. the infobox div).  If MM is not yet initialised at click time, poll
-    // until it is.
-    (function () {
-      function _setUME() {
-        if (window.MM) {
-          window.MM.UME = true;
-        } else {
-          var t = setInterval(function () {
-            if (window.MM) { window.MM.UME = true; clearInterval(t); }
-          }, 50);
-        }
-      }
-      ['click', 'touchstart', 'keydown'].forEach(function (evt) {
-        document.addEventListener(evt, _setUME, { once: true, capture: true });
-      });
-    }());
   </script>"""
+
+# The exact while-loop text that pygbag 0.9.3 emits inside index.html.
+# MM.UME is a read-only getter on Pygbag's MediaManager object — attempting
+# to set it from JavaScript (window.MM.UME = true) silently fails, so the
+# loop never exits.  We patch it out of the generated HTML at build time.
+_UME_OLD = (
+    "        while not platform.window.MM.UME:\n"
+    "            await asyncio.sleep(.1)\n"
+)
+_UME_NEW = (
+    "        # pwa_inject.py: MM.UME gate removed — unreliable in most browsers.\n"
+    "        # Game starts immediately; audio unlock is handled by the first\n"
+    "        # user interaction inside the game itself.\n"
+    "        platform.window.infobox.innerText = 'Starting Aquarium 98...'\n"
+    "        await asyncio.sleep(0)\n"
+)
 
 
 def _patch_html() -> None:
@@ -177,9 +173,16 @@ def _patch_html() -> None:
         print("  index.html already patched — skipping.")
         return
 
+    # Patch out the UME blocking loop from the pygbag template Python code.
+    if _UME_OLD in html:
+        html = html.replace(_UME_OLD, _UME_NEW, 1)
+        print("  index.html  (UME blocking loop removed)")
+    else:
+        print("  index.html  WARNING: UME loop pattern not found — template may have changed")
+
     html = html.replace("</head>", _PWA_HEAD + "\n</head>", 1)
     html_path.write_text(html, encoding="utf-8")
-    print("  index.html  (manifest + SW registration + UME fix injected)")
+    print("  index.html  (manifest + SW registration injected)")
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
