@@ -636,10 +636,13 @@ class Renderer:
         # Avoids copy+fill on every grounded flake every frame.
         # Capped at 128 entries; oldest entries evicted to bound memory use.
         self._grounded_food_cache: dict[tuple[int, int], pygame.Surface] = {}
-        # Rotated grazer sprite cache: (cache_key_tuple, angle_int) → Surface
+        # Rotated grazer sprite cache: (cache_key_tuple, frame_idx, angle_int) → Surface
         # pygame.transform.rotate() is expensive; wall-grazing fish reuse the
         # same angle each frame, so the result is cached here.
+        # Capped at 64 entries; evict oldest half when full (covers ~3 resizes
+        # worth of algae-seeker species without leaking stale surfaces).
         self._rotated_grazer_cache: dict[tuple, pygame.Surface] = {}
+        self._ROTATED_GRAZER_CAP = 64
         # Fish highlight: pulsing circle drawn around a fish when its profile is opened
         self._highlight_fish   = None
         self._highlight_until  = 0   # pygame.time.get_ticks() expiry ms
@@ -1221,13 +1224,23 @@ class Renderer:
             rot_key = (f.cache_key, idx, int(f.graze_angle))
             rot_spr = self._rotated_grazer_cache.get(rot_key)
             if rot_spr is None:
+                if len(self._rotated_grazer_cache) >= self._ROTATED_GRAZER_CAP:
+                    # Evict oldest half to release stale post-resize surfaces
+                    self._rotated_grazer_cache = dict(
+                        list(self._rotated_grazer_cache.items())[self._ROTATED_GRAZER_CAP // 2:]
+                    )
                 rot_spr = pygame.transform.rotate(spr, f.graze_angle)
                 self._rotated_grazer_cache[rot_key] = rot_spr
             spr = rot_spr
 
-        # Health < 0.6: fade toward transparent as the fish declines
+        # Health < 0.6: fade toward transparent as the fish declines.
+        # Use a copy when the sprite is from the shared rotated cache so we
+        # don't corrupt the cached surface for other fish sharing the same entry.
         if f.health < 0.6:
-            spr.set_alpha(max(30, int(255 * f.health / 0.6)))
+            alpha = max(80, int(255 * f.health / 0.6))
+            if is_algae_seeker and f.is_grazing and f.graze_angle != 0.0:
+                spr = spr.copy()
+            spr.set_alpha(alpha)
         else:
             spr.set_alpha(255)
 

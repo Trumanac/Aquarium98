@@ -9,6 +9,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.17] — 2026-06-01
+
+### Fixed
+- **Rotated grazer sprite cache grows unbounded across window resizes** — `_rotated_grazer_cache` in the renderer never evicted old entries. After multiple resizes each scale change generated new cache keys while the old surfaces were never released. Cache is now capped at 64 entries with oldest-half eviction, matching the pattern already used for the bubble and grounded-food caches.
+- **`set_alpha` on shared rotated sprite corrupts transparency for tank-mates** — when a wall-grazing algae-seeker had health < 0.6 its rotated sprite was fetched from the shared renderer cache and mutated with `set_alpha`. A second algae-seeker of the same species grazing at the same angle and frame would share that surface, causing it to render at the sick fish's alpha. Fix: copy the surface before mutating alpha when the rotated-cache path is taken.
+- **Dying fish nearly invisible at low health** — the minimum alpha floor was 30 (~12% opacity), making fish at critical health almost impossible to see and hard to rescue. Raised to 80 (~31% opacity) so a dying fish remains clearly visible but still shows obvious decline.
+- **Download temp file not closed on network error** — if an exception was raised mid-download (e.g. connection reset) the `NamedTemporaryFile` handle was leaked open. The exception handler now explicitly closes the handle before reporting failure.
+
+---
+
 ## [1.0.16] — 2026-06-01
 
 ### Fixed

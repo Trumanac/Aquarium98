@@ -132,6 +132,7 @@ def start_download() -> None:
 
 
 def _dl_worker(url: str) -> None:
+    tmp = None
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Aquarium98"})
         with urllib.request.urlopen(req, timeout=120) as resp:
@@ -151,12 +152,19 @@ def _dl_worker(url: str) -> None:
                     with _dl_lock:
                         _dl_state["progress"] = downloaded / total
             tmp.close()
+            tmp_name = tmp.name
+            tmp = None  # mark as cleanly closed
         with _dl_lock:
             _dl_state.update({
                 "status": "ready", "progress": 1.0,
-                "path": tmp.name, "error": "",
+                "path": tmp_name, "error": "",
             })
     except Exception as exc:  # noqa: BLE001
+        if tmp is not None:
+            try:
+                tmp.close()
+            except OSError:
+                pass
         with _dl_lock:
             _dl_state.update({"status": "failed", "error": str(exc)})
 
