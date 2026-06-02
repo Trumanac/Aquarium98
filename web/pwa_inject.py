@@ -143,6 +143,27 @@ _PWA_HEAD = """\
           .catch(e => console.warn("[SW] registration failed:", e));
       });
     }
+  </script>
+  <script>
+    // Pygbag 0.9.3 UME fix: the built-in click detection for window.MM.UME
+    // does not fire reliably, so the Python loop `while not MM.UME` never exits.
+    // Listen in capture phase so we catch events even over high-z overlays
+    // (e.g. the infobox div).  If MM is not yet initialised at click time, poll
+    // until it is.
+    (function () {
+      function _setUME() {
+        if (window.MM) {
+          window.MM.UME = true;
+        } else {
+          var t = setInterval(function () {
+            if (window.MM) { window.MM.UME = true; clearInterval(t); }
+          }, 50);
+        }
+      }
+      ['click', 'touchstart', 'keydown'].forEach(function (evt) {
+        document.addEventListener(evt, _setUME, { once: true, capture: true });
+      });
+    }());
   </script>"""
 
 
@@ -155,9 +176,19 @@ def _patch_html() -> None:
     if '<link rel="manifest"' in html:
         print("  index.html already patched — skipping.")
         return
+
+    # Disable pygbag's built-in UME block so window.MM.UME starts as true,
+    # allowing the explicit click handler above to remain the sole gate.
+    patched = html.replace("ume_block : 1", "ume_block : 0", 1)
+    if patched == html:
+        print("  index.html  (ume_block not found — skipping that patch)")
+    else:
+        html = patched
+        print("  index.html  (ume_block patched to 0)")
+
     html = html.replace("</head>", _PWA_HEAD + "\n</head>", 1)
     html_path.write_text(html, encoding="utf-8")
-    print("  index.html  (manifest + SW registration injected)")
+    print("  index.html  (manifest + SW registration + UME fix injected)")
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
