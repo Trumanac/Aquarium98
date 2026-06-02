@@ -85,23 +85,25 @@ jobs:
           echo "BrowserFS fix applied:"
           grep -n "browserfs" build/web/index.html
 
-      - name: Patch HTML for fullscreen (CSS + canvas aspect ratio)
+      - name: Patch HTML (fullscreen CSS)
         run: |
-          # Remove the forced 16:9 aspect-ratio lock so the pygame surface can
-          # fill any browser viewport without letterboxing.
-          sed -i 's/fb_ar   :  1\.77/fb_ar   :  0/' build/web/index.html
+          # Do NOT touch fb_ar — setting it to 0 causes pygbag's window_resize()
+          # to divide by zero and produce a 0×0 canvas before Python runs.
+          # The Python init_window() already detects the viewport via
+          # platform.window.innerWidth and resizes the SDL canvas at startup.
 
-          # Fix body/html so the canvas height:100% resolves to the full viewport.
+          # Fix body/html so canvas height:100% resolves to the full viewport height.
           sed -i 's/padding: none;/padding: 0;/' build/web/index.html
           sed -i 's/background-color:powderblue;/background-color: #000000;/' build/web/index.html
 
-          # Insert html { height:100% } rule before the body rule and extend body too.
+          # Insert html { height:100%; overflow:hidden } before the body rule,
+          # and add the same properties to body.
           sed -i \
             's/        body {/        html {\n            height: 100%;\n            overflow: hidden;\n        }\n\n        body {\n            height: 100%;\n            overflow: hidden;/' \
             build/web/index.html
 
           echo "HTML patch applied:"
-          grep -n "fb_ar\|height: 100\|overflow\|background-color" build/web/index.html | head -20
+          grep -n "height: 100\|overflow\|background-color" build/web/index.html | head -20
 
       - name: Inject PWA (manifest + service worker + icons)
         run: |
