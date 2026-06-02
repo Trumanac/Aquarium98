@@ -170,20 +170,18 @@ _UME_NEW = (
 _SOURCE_OLD = (
     "    await shell.source(main, callback=ui_callback)\n"
 )
+# preload_code() has a single flag: `if not aio.cross.simulator:` that gates
+# ALL network activity (check_list, pip_install, PyPI lookups).  Setting
+# aio.cross.simulator = True skips it entirely while still letting preload_code
+# run the important os.chdir / sys.path setup at the top of the function.
+# This is simpler and more reliable than patching class methods.
 _SOURCE_NEW = (
-    "    # pwa_inject.py: replace preload_code with a no-op.\n"
+    "    # pwa_inject.py: skip CDN/PyPI package checks (all deps are bundled).\n"
     "    try:\n"
-    "        async def _fast_preload(cls, code=None, callback=None,\n"
-    "                                loaderhome='.', hint=''):\n"
-    "            try:\n"
-    "                import aio.pep0723\n"
-    "                aio.pep0723.Config.imports_ready = True\n"
-    "            except Exception:\n"
-    "                pass\n"
-    "            return True\n"
-    "        TopLevel_async_handler.preload_code = classmethod(_fast_preload)\n"
+    "        import aio.cross as _aio_cross\n"
+    "        _aio_cross.simulator = True\n"
     "    except Exception as _pwa_e:\n"
-    "        print('pwa preload_code bypass:', _pwa_e)\n"
+    "        print('pwa simulator bypass:', _pwa_e)\n"
     "    platform.window.infobox.innerText = 'Loading game...'\n"
     "    await asyncio.sleep(0)\n"
     "    await shell.source(main, callback=ui_callback)\n"
