@@ -313,7 +313,11 @@ def _gen_personality(sp: dict, speed_mult: float, layer: int) -> str:
     return f"{tempo.capitalize()}, {social}, {habitat}. {random.choice(quirks).capitalize()}."
 
 
-def _update_hermit_crab(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
+def _update_hermit_crab(
+    f: Fish, tank_w: int, tank_h: int, dt: float,
+    food_list: list | None = None,
+    env: "object | None" = None,
+) -> None:
     """Hermit crab shell-cycle state machine.
 
     Sprite sheet layout (3 cols × 3 rows = 9 frames):
@@ -384,6 +388,28 @@ def _update_hermit_crab(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
             f.crab_phase = "in_shell"
             f.crab_timer = random.uniform(8.0, 20.0)
             f.frame = 0
+
+    # Feeding — only when out of shell (emerging, crawling, or retreating)
+    if f.crab_phase == "in_shell":
+        return
+    # Grounded flakes/pellets within reach
+    if food_list and f.hunger > 0.35:
+        for p in food_list:
+            if p.active and p.grounded and not p.eaten:
+                dx = p.x - f.x
+                dy = p.y - f.y
+                if dx * dx + dy * dy < 36 * 36:
+                    p.eaten = True
+                    f.hunger = max(0.0, f.hunger - 0.45)
+                    break
+    # Algae grazing while crawling (slower rate than dedicated algae eaters)
+    if env is not None and f.crab_phase == "crawling":
+        algae_lvl = env.algae
+        if algae_lvl > 2.0:
+            graze_rate = 0.0008 + 0.002 * (algae_lvl / 100.0)
+            env.algae = max(0.0, algae_lvl - dt * graze_rate)
+            if algae_lvl > 10.0:
+                f.hunger = max(0.0, f.hunger - dt * 0.005)
 
 
 def _update_frog(f: Fish, tank_w: int, tank_h: int, dt: float) -> None:
@@ -785,7 +811,7 @@ def update_fish(f: Fish, tank_w: int, tank_h: int, dt: float,
     """Advance one fish by dt seconds."""
     # Hermit crabs use a completely separate state machine
     if f.sp.get("hermit_crab"):
-        _update_hermit_crab(f, tank_w, tank_h, dt)
+        _update_hermit_crab(f, tank_w, tank_h, dt, food_list=food_list, env=env)
         return
     if f.sp.get("frog"):
         _update_frog(f, tank_w, tank_h, dt)
