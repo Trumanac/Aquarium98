@@ -154,10 +154,22 @@ _UME_OLD = (
     "        while not platform.window.MM.UME:\n"
     "            await asyncio.sleep(.1)\n"
 )
+# Two things are patched here:
+# 1. The MM.UME blocking loop is removed — it never exits in most browsers.
+# 2. aio.pep0723.check_list and pip_install are replaced with no-ops so the
+#    startup does not hang waiting for the pygbag CDN package-index download.
+#    All game dependencies are bundled in the tar.gz archive, so network-based
+#    package preloading is unnecessary.
 _UME_NEW = (
-    "        # pwa_inject.py: MM.UME gate removed — unreliable in most browsers.\n"
-    "        # Game starts immediately; audio unlock is handled by the first\n"
-    "        # user interaction inside the game itself.\n"
+    "        # pwa_inject.py: MM.UME gate + CDN preload both bypassed.\n"
+    "        try:\n"
+    "            import aio.pep0723 as _p723\n"
+    "            async def _noop_list(*_a, **_kw): return []\n"
+    "            async def _noop_pip(*_a, **_kw): pass\n"
+    "            _p723.check_list = _noop_list\n"
+    "            _p723.pip_install = _noop_pip\n"
+    "        except Exception as _e:\n"
+    "            print('pwa_inject preload bypass failed:', _e)\n"
     "        platform.window.infobox.innerText = 'Starting Aquarium 98...'\n"
     "        await asyncio.sleep(0)\n"
 )
