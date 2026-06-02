@@ -32,7 +32,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.18"
+    APP_VERSION = "1.0.19"
 
 import pygame
 
@@ -275,7 +275,12 @@ async def main() -> int:
 
         # Show startup splash before the main game window is created
         try:
-            pygame.mixer.pre_init(44100, -16, 2, 512)
+            # WASM needs a larger buffer: at 30 fps the event loop yields only
+            # ~30×/sec; 512 samples (11.6 ms) empties between yields → underruns.
+            # 2048 samples (46 ms) gives comfortable headroom without noticeable
+            # latency increase for ambient music.
+            _mix_buf = 4096 if sys.platform == "emscripten" else 512
+            pygame.mixer.pre_init(44100, -16, 2, _mix_buf)
         except Exception:  # noqa: BLE001 — some WASM audio backends reject pre_init params
             pass
         pygame.display.init()
@@ -1563,7 +1568,12 @@ async def main() -> int:
                             elif win_mod.in_minimize_button(mx, my, *_sz):
                                 pygame.display.iconify()
                             elif win_mod.in_fullscreen_button(mx, my, *_sz):
-                                if not _is_fullscreen:
+                                if sys.platform == "emscripten":
+                                    # Browser: delegate to the HTML5 Fullscreen API.
+                                    # The OS will fire a WINDOWRESIZED event when it
+                                    # actually resizes, so pygame catches up automatically.
+                                    win_mod.toggle_web_fullscreen()
+                                elif not _is_fullscreen:
                                     # Enter windowed fullscreen (borderless)
                                     _pre_fs_size = surface.get_size()
                                     _pre_fs_pos  = win_mod.get_position(sdl_win) or (0, 0)
@@ -1647,7 +1657,7 @@ async def main() -> int:
                                     drag_rel_accum = (0, 0)
                                     log.debug("drag_mode=move drag_win_start=%s", drag_win_start)
                     if ev.button == 3:
-                        items = feed_menu()
+                        items = feed_menu(web=sys.platform == "emscripten")
                         # Reflect current toggle state
                         toggles = {
                             "pause": paused,
@@ -1874,6 +1884,10 @@ async def main() -> int:
                 # time), discard the leftover debt to prevent fast-forward catch-up.
                 if steps >= 6:
                     sim_accum = 0.0
+
+            # Yield to the browser between simulation and rendering so the Web
+            # Audio API can refill its buffers.  On desktop this is a no-op.
+            await asyncio.sleep(0)
 
             # -------- real-time day/night override --------
             if cfg.get("night_cycle", True) and now - _night_last_t >= 1.0:

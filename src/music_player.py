@@ -114,6 +114,10 @@ class MusicPlayer:
         self._held_btn: str | None = None          # button held on mousedown
         self._press_overlay: pygame.Surface | None = None  # semi-transparent press overlay
 
+        # Cached title-bar gradient surface — rebuilt only when panel width changes
+        self._title_grad: pygame.Surface | None = None
+        self._title_grad_w: int = 0
+
         # Panel drag state (user can reposition the player by dragging its title bar)
         self._panel_dragging   = False
         self._panel_drag_off   = (0, 0)   # mouse offset from panel topleft at drag start
@@ -414,13 +418,16 @@ class MusicPlayer:
 
         # ── Title bar gradient ───────────────────────────────────────────
         tb = pygame.Rect(px + 2, py + 2, PW - 4, _TB_H)
-        for i in range(tb.w):
-            t  = i / max(1, tb.w - 1)
-            rc = int(_TITLE_DARK[0] + (_TITLE_LIGHT[0] - _TITLE_DARK[0]) * t)
-            gc = int(_TITLE_DARK[1] + (_TITLE_LIGHT[1] - _TITLE_DARK[1]) * t)
-            bc = int(_TITLE_DARK[2] + (_TITLE_LIGHT[2] - _TITLE_DARK[2]) * t)
-            pygame.draw.line(surface, (rc, gc, bc),
-                             (tb.left + i, tb.top), (tb.left + i, tb.bottom - 1))
+        if self._title_grad is None or self._title_grad_w != tb.w:
+            self._title_grad_w = tb.w
+            self._title_grad = pygame.Surface((tb.w, _TB_H))
+            for i in range(tb.w):
+                t  = i / max(1, tb.w - 1)
+                rc = int(_TITLE_DARK[0] + (_TITLE_LIGHT[0] - _TITLE_DARK[0]) * t)
+                gc = int(_TITLE_DARK[1] + (_TITLE_LIGHT[1] - _TITLE_DARK[1]) * t)
+                bc = int(_TITLE_DARK[2] + (_TITLE_LIGHT[2] - _TITLE_DARK[2]) * t)
+                pygame.draw.line(self._title_grad, (rc, gc, bc), (i, 0), (i, _TB_H - 1))
+        surface.blit(self._title_grad, (tb.left, tb.top))
         if self._font is not None:
             ts = self._font.render("\u266a Music Player", True, _LIGHT)
             surface.blit(ts, (tb.left + 3, tb.top + (tb.h - ts.get_height()) // 2))

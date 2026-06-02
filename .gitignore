@@ -40,6 +40,9 @@ assets/icon/icon.icns
 # ── Unused / archived source assets ──────────────────────────────────────────
 assets/_unused/
 
+# ── Audacity project sidecars ────────────────────────────────────────────────
+*.asd
+
 # ── OS artefacts ─────────────────────────────────────────────────────────────
 .DS_Store
 .DS_Store?

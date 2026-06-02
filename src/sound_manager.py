@@ -30,6 +30,7 @@ Usage::
 from __future__ import annotations
 
 import random
+import sys
 import time
 from pathlib import Path
 
@@ -80,7 +81,8 @@ class SoundManager:
         # pygame.display.init() was called — pygame.get_init() stays False).
         if not pygame.mixer.get_init():
             try:
-                pygame.mixer.pre_init(44100, -16, 2, 512)
+                _mix_buf = 4096 if sys.platform == "emscripten" else 512
+                pygame.mixer.pre_init(44100, -16, 2, _mix_buf)
                 pygame.mixer.init()
             except Exception:  # noqa: BLE001
                 return  # no audio device — stay silent

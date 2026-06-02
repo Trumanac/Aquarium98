@@ -85,6 +85,24 @@ jobs:
           echo "BrowserFS fix applied:"
           grep -n "browserfs" build/web/index.html
 
+      - name: Patch HTML for fullscreen (CSS + canvas aspect ratio)
+        run: |
+          # Remove the forced 16:9 aspect-ratio lock so the pygame surface can
+          # fill any browser viewport without letterboxing.
+          sed -i 's/fb_ar   :  1\.77/fb_ar   :  0/' build/web/index.html
+
+          # Fix body/html so the canvas height:100% resolves to the full viewport.
+          sed -i 's/padding: none;/padding: 0;/' build/web/index.html
+          sed -i 's/background-color:powderblue;/background-color: #000000;/' build/web/index.html
+
+          # Insert html { height:100% } rule before the body rule and extend body too.
+          sed -i \
+            's/        body {/        html {\n            height: 100%;\n            overflow: hidden;\n        }\n\n        body {\n            height: 100%;\n            overflow: hidden;/' \
+            build/web/index.html
+
+          echo "HTML patch applied:"
+          grep -n "fb_ar\|height: 100\|overflow\|background-color" build/web/index.html | head -20
+
       - name: Inject PWA (manifest + service worker + icons)
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")

@@ -127,6 +127,14 @@ async def main() -> int:
     # Keep showing the canvas so the user sees the last frame; if the screen
     # is grey that means a silent early-exit occurred.
     print(f"web: game exited with code {result}")
+    # Clean exit (code 0): the user chose Restart — reload the page.
+    # Non-zero exit: something went wrong; show the error screen.
+    if result == 0:
+        try:
+            import platform as _plt
+            _plt.window.location.reload()
+        except Exception:
+            pass
     _render_fatal(
         f"Game exited (code {result}).\n\n"
         "This is a bug — please report it.\n\n"

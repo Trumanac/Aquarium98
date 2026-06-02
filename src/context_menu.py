@@ -28,8 +28,8 @@ class MenuItem:
     submenu: list | None = None   # list[MenuItem]
 
 
-def feed_menu() -> list[MenuItem]:
-    return [
+def feed_menu(web: bool = False) -> list[MenuItem]:
+    items: list[MenuItem] = [
         MenuItem("Pause Simulation",   "pause",         False),
         MenuItem("---", None),
         MenuItem("Feed Fish",          "feed"),
@@ -42,27 +42,40 @@ def feed_menu() -> list[MenuItem]:
         MenuItem("Encyclopaedia",      "encyclopedia"),
         MenuItem("Fish Memorial",      "graveyard"),
         MenuItem("---", None),
-        MenuItem("Lock in Place",      "toggle_lock",   False),
-        MenuItem("Always on Top",      "toggle_top",    False),
-        MenuItem("Pause When Hidden",  "toggle_phide",  True),
+    ]
+    if not web:
+        # Desktop-only window-management items
+        items += [
+            MenuItem("Lock in Place",      "toggle_lock",   False),
+            MenuItem("Always on Top",      "toggle_top",    False),
+            MenuItem("Pause When Hidden",  "toggle_phide",  True),
+        ]
+    items += [
         MenuItem("Show Fish Names",    "toggle_names",  False),
         MenuItem("Show Fish Moods",    "toggle_moods",  False),
         MenuItem("Mute Sounds",        "toggle_mute",   False),
         MenuItem("---", None),
-        MenuItem("Opacity",            None,            submenu=[
-            MenuItem("100%", "op_100"),
-            MenuItem(" 90%", "op_90"),
-            MenuItem(" 75%", "op_75"),
-            MenuItem(" 50%", "op_50"),
-            MenuItem(" 30%", "op_30"),
-        ]),
-        MenuItem("How to Play...",     "how_to_play"),
-        MenuItem("About Aquarium 98...", "about"),
-        MenuItem("Settings...",        "settings"),
-        MenuItem("---", None),
-        MenuItem("Minimize to Tray",   "tray"),
-        MenuItem("Quit",               "quit"),
     ]
+    if not web:
+        items += [
+            MenuItem("Opacity",        None,            submenu=[
+                MenuItem("100%", "op_100"),
+                MenuItem(" 90%", "op_90"),
+                MenuItem(" 75%", "op_75"),
+                MenuItem(" 50%", "op_50"),
+                MenuItem(" 30%", "op_30"),
+            ]),
+        ]
+    items += [
+        MenuItem("How to Play...",       "how_to_play"),
+        MenuItem("About Aquarium 98...", "about"),
+        MenuItem("Settings...",          "settings"),
+        MenuItem("---", None),
+    ]
+    if not web:
+        items.append(MenuItem("Minimize to Tray", "tray"))
+    items.append(MenuItem("Quit" if not web else "Restart", "quit"))
+    return items
 
 
 class ContextMenu:
