@@ -62,20 +62,6 @@ def init_window(cfg: dict) -> tuple[pygame.Surface, None, pygame.font.Font]:
     surface = pygame.display.set_mode((w, h))
     pygame.display.set_caption("Aquarium 98")
 
-    # Strip the browser page's default margins/padding so the canvas sits
-    # flush at (0, 0) with no scrollbars.
-    try:
-        import platform as _plt
-        _style = _plt.document.createElement("style")
-        _style.textContent = (
-            "html,body{margin:0;padding:0;overflow:hidden;"
-            "width:100%;height:100%;background:#000;}"
-            "canvas{display:block;}"
-        )
-        _plt.document.head.appendChild(_style)
-    except Exception:  # noqa: BLE001
-        pass
-
     # Set window icon if available (no-op if it fails in WASM)
     try:
         icon_path = _FONTS_DIR.parent / "icon" / "icon.png"
