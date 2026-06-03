@@ -212,6 +212,18 @@ def _patch_html() -> None:
     else:
         print("  index.html  WARNING: shell.source line not found — template may have changed")
 
+    # Patch 3: set autorun:1 so Python launches immediately without requiring
+    # a user click.  The JS-level UME gate (autorun:0 / ume_block:1) hides its
+    # "click to start" prompt in the terminal strip below the canvas — invisible
+    # to users who only see the grey game area.  With autorun:1 Python starts at
+    # once; audio stays silent until the first canvas interaction (Chrome's
+    # autoplay policy), which is normal game UX.
+    if '"autorun":0' in html:
+        html = html.replace('"autorun":0', '"autorun":1', 1)
+        print("  index.html  (autorun:1 — Python starts without user click)")
+    else:
+        print("  index.html  WARNING: autorun:0 not found — already set or template changed")
+
     html = html.replace("</head>", _PWA_HEAD + "\n</head>", 1)
     html_path.write_text(html, encoding="utf-8")
     print("  index.html  (manifest + SW registration injected)")
