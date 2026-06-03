@@ -46,18 +46,14 @@ def init_window(cfg: dict) -> tuple[pygame.Surface, None, pygame.font.Font]:
     pygame.display.init()
     pygame.font.init()
 
-    # Read the actual browser viewport at startup so the canvas immediately
-    # fills the window — no blank-and-resize flash waiting for WINDOWRESIZED.
-    w, h = 1280, 720  # safe fallback
-    try:
-        import platform as _plt
-        vw = int(_plt.window.innerWidth)
-        vh = int(_plt.window.innerHeight)
-        if vw >= MIN_W and vh >= MIN_H:
-            w, h = vw, vh
-    except Exception:
-        w = max(MIN_W, min(MAX_W, int(cfg.get("window_w", 1280))))
-        h = max(MIN_H, min(MAX_H, int(cfg.get("window_h", 720))))
+    # Start at a safe HD size.  The canvas is already CSS-stretched to fill
+    # the viewport (position:absolute; top:0; bottom:0; left:0; right:0) by
+    # pygbag's own stylesheet.  A WINDOWRESIZED event fires shortly after
+    # startup and the main-loop handler resizes the surface to the true
+    # viewport dimensions.  Avoid reading platform.window.innerWidth here —
+    # that JS interop call causes a silent WASM crash on startup.
+    w = max(MIN_W, min(MAX_W, int(cfg.get("window_w", 1280))))
+    h = max(MIN_H, min(MAX_H, int(cfg.get("window_h", 720))))
 
     surface = pygame.display.set_mode((w, h))
     pygame.display.set_caption("Aquarium 98")
