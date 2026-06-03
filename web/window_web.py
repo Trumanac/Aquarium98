@@ -46,15 +46,35 @@ def init_window(cfg: dict) -> tuple[pygame.Surface, None, pygame.font.Font]:
     pygame.display.init()
     pygame.font.init()
 
-    # Web: start at a known-safe HD size.  Pygbag's window_resize() fires a
-    # WINDOWRESIZED event shortly after startup; the main-loop handler (in
-    # aquarium.py) then resizes to the actual viewport.  MAX_W/MAX_H are set
-    # to 7680×4320 so that resize is never clamped away.
-    w = max(MIN_W, min(MAX_W, int(cfg.get("window_w", 1280))))
-    h = max(MIN_H, min(MAX_H, int(cfg.get("window_h", 720))))
+    # Read the actual browser viewport at startup so the canvas immediately
+    # fills the window — no blank-and-resize flash waiting for WINDOWRESIZED.
+    w, h = 1280, 720  # safe fallback
+    try:
+        import platform as _plt
+        vw = int(_plt.window.innerWidth)
+        vh = int(_plt.window.innerHeight)
+        if vw >= MIN_W and vh >= MIN_H:
+            w, h = vw, vh
+    except Exception:
+        w = max(MIN_W, min(MAX_W, int(cfg.get("window_w", 1280))))
+        h = max(MIN_H, min(MAX_H, int(cfg.get("window_h", 720))))
 
     surface = pygame.display.set_mode((w, h))
     pygame.display.set_caption("Aquarium 98")
+
+    # Strip the browser page's default margins/padding so the canvas sits
+    # flush at (0, 0) with no scrollbars.
+    try:
+        import platform as _plt
+        _style = _plt.document.createElement("style")
+        _style.textContent = (
+            "html,body{margin:0;padding:0;overflow:hidden;"
+            "width:100%;height:100%;background:#000;}"
+            "canvas{display:block;}"
+        )
+        _plt.document.head.appendChild(_style)
+    except Exception:  # noqa: BLE001
+        pass
 
     # Set window icon if available (no-op if it fails in WASM)
     try:
