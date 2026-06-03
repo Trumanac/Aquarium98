@@ -85,25 +85,30 @@ jobs:
           echo "BrowserFS fix applied:"
           grep -n "browserfs" build/web/index.html
 
-      - name: Patch HTML (cosmetic CSS only)
+      - name: Patch HTML
         run: |
           # IMPORTANT: Do NOT add html/body overflow:hidden or height:100% rules.
           # When html/body have overflow:hidden, Chrome propagates that to the
-          # viewport, which can clip the position:fixed infobox that shows the
-          # "Ready to start – click to continue" prompt.  Without it visible the
-          # user can never satisfy the UME check and the game never loads.
+          # viewport, which can clip the position:fixed infobox.
           #
           # The canvas already fills the viewport via its own CSS:
           #   position:absolute; top:0; bottom:0; left:0; right:0
-          # No html/body height change is needed for that to work.
 
           # Fix invalid CSS value (padding: none → padding: 0) — harmless.
           sed -i 's/padding: none;/padding: 0;/' build/web/index.html
           # Replace the loading-screen background colour — cosmetic only.
           sed -i 's/background-color:powderblue;/background-color: #000080;/' build/web/index.html
 
+          # Set autorun:1 so Python starts immediately without a user click.
+          # pygbag's default autorun:0 + ume_block:1 hides its "click to start"
+          # prompt in a terminal strip below the canvas that users never see,
+          # leaving the game on a grey screen indefinitely.  With autorun:1
+          # Python launches on page load; audio resumes on the first canvas
+          # interaction (Chrome autoplay policy), which is standard game UX.
+          sed -i 's/"autorun":0/"autorun":1/g' build/web/index.html
+
           echo "HTML patch applied:"
-          grep -n "padding\|background-color" build/web/index.html | head -10
+          grep -n "autorun\|padding\|background-color" build/web/index.html | head -15
 
       - name: Inject PWA (manifest + service worker + icons)
         run: |
