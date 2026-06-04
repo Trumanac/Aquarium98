@@ -45,17 +45,27 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-web.txt Pillow
 
-      - name: Convert MP3 → OGG for web (pygbag does not allow MP3)
+      - name: Convert audio to OGG for web (MP3 unsupported; WAV music tracks too large)
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends ffmpeg
+          # Convert MP3 → OGG
           for f in assets/audio/*.mp3; do
+            [ -f "$f" ] || continue
             ffmpeg -i "$f" "${f%.mp3}.ogg" -y -loglevel error
             rm "$f"
           done
-          # Patch .mp3 extension references in Python source to .ogg
+          # Convert WAV → OGG (music tracks are large; SFX compress well too)
+          for f in assets/audio/*.wav; do
+            [ -f "$f" ] || continue
+            ffmpeg -i "$f" "${f%.wav}.ogg" -y -loglevel error
+            rm "$f"
+          done
+          # Patch extension references in Python source to .ogg
           find src -name "*.py" -exec sed -i 's/\.mp3"/\.ogg"/g' {} +
           find . -maxdepth 1 -name "*.py" -exec sed -i 's/\.mp3"/\.ogg"/g' {} +
+          find src -name "*.py" -exec sed -i 's/\.wav"/\.ogg"/g' {} +
+          find . -maxdepth 1 -name "*.py" -exec sed -i 's/\.wav"/\.ogg"/g' {} +
 
       - name: Build
         # pygbag's template (custom_site) looks for assets/main.py in the
@@ -105,7 +115,8 @@ jobs:
           # leaving the game on a grey screen indefinitely.  With autorun:1
           # Python launches on page load; audio resumes on the first canvas
           # interaction (Chrome autoplay policy), which is standard game UX.
-          sed -i 's/"autorun":0/"autorun":1/g' build/web/index.html
+          # Use -E to match both quoted ("autorun":0) and plain JS (autorun : 0) forms.
+          sed -i -E 's/"?autorun"?\s*:\s*0/autorun : 1/g' build/web/index.html
 
           echo "HTML patch applied:"
           grep -n "autorun\|padding\|background-color" build/web/index.html | head -15

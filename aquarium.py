@@ -32,7 +32,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("aquarium98")
 except Exception:  # noqa: BLE001
-    APP_VERSION = "1.0.19"
+    APP_VERSION = "1.0.20"
 
 import pygame
 
@@ -103,7 +103,7 @@ def _setup_logging() -> None:
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
     # File logging is not available in WASM (Emscripten virtual FS has no
     # persistent home dir suitable for RotatingFileHandler).
-    if platform.system() != "Emscripten":
+    if sys.platform != "emscripten":
         try:
             LOG_DIR.mkdir(parents=True, exist_ok=True)
             logfile = LOG_DIR / "aquarium.log"
@@ -145,7 +145,7 @@ _WIN_MUTEX_NAME = "Global\\Aquarium98SingleInstance"
 def _acquire_lock() -> bool:
     global _WIN_MUTEX_HANDLE
     # No single-instance locking in the browser — each tab is its own process.
-    if platform.system() == "Emscripten":
+    if sys.platform == "emscripten":
         return True
     if IS_WINDOWS:
         try:
@@ -2140,7 +2140,7 @@ async def main() -> int:
         # CrashDialog uses a synchronous blocking event loop which deadlocks
         # the browser in WASM.  Skip it there — the traceback is already in
         # the log file and console.
-        if platform.system() == "Emscripten":
+        if sys.platform == "emscripten":
             raise  # propagate to web_main.py which renders the traceback on-canvas
         try:
             dlg = CrashDialog(tb_text, log_path)

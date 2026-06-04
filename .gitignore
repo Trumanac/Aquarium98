@@ -43,6 +43,11 @@ assets/_unused/
 # ── Audacity project sidecars ────────────────────────────────────────────────
 *.asd
 
+# ── Audio edit staging files (* - edit.*) ────────────────────────────────────
+# These are working copies used during audio editing; the final renamed files
+# (without "- edit") are the ones committed to the repo.
+assets/audio/* - edit.*
+
 # ── OS artefacts ─────────────────────────────────────────────────────────────
 .DS_Store
 .DS_Store?

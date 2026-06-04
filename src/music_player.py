@@ -44,14 +44,14 @@ _MC_SLBG  = (564,  1075, 1437, 450) # row 3, slider track
 _MC_THUMB = (1692, 766,  123,  163)  # row 2 far-right – thumb knob
 
 MUSIC_TRACKS: list[str] = [
-    "Sunken_Corridor_View.mp3",
-    "Ten_Fathoms_Down.mp3",
-    "Sunken_Grotto.mp3",
-    "Sunken_Disco_Floor.mp3",
-    "Driftwood_and_Glass.mp3",
-    "Lobby_Reef.mp3",
-    "Aquarium_Hours.mp3",
-    "Blue_Hour_Atrium.mp3",
+    "Sunken_Corridor_View.wav",
+    "Ten_Fathoms_Down.wav",
+    "Sunken_Grotto.wav",
+    "Sunken_Disco_Floor.wav",
+    "Driftwood_and_Glass.wav",
+    "Lobby_Reef.wav",
+    "Aquarium_Hours.wav",
+    "Blue_Hour_Atrium.wav",
 ]
 
 # Custom event fired by pygame when a music track ends.
@@ -293,9 +293,7 @@ class MusicPlayer:
         """Return current track name with underscores replaced by spaces, no extension."""
         if not self._order:
             return "No tracks"
-        name = MUSIC_TRACKS[self._order[self._idx]]
-        if name.lower().endswith(".mp3"):
-            name = name[:-4]
+        name = Path(MUSIC_TRACKS[self._order[self._idx]]).stem
         return name.replace("_", " ")
 
     def now_playing_text(self) -> str:

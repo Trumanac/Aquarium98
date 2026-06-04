@@ -9,6 +9,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.20] — 2026-06-04
+
+### Changed
+- **Ambient music tracks replaced with edited masters** — all 8 background tracks (Aquarium Hours, Blue Hour Atrium, Driftwood and Glass, Lobby Reef, Sunken Corridor View, Sunken Disco Floor, Sunken Grotto, Ten Fathoms Down) updated to improved edited WAV files. ChestCreak SFX also replaced with an edited version.
+- **Music track name display** — `current_track_name()` now uses `Path.stem` to strip any file extension (`.wav`, `.ogg`, `.mp3`), so song titles display cleanly regardless of format.
+- **Web build: all audio converted to OGG** — CI now converts all `assets/audio/*.wav` → `.ogg` (in addition to the existing `.mp3` → `.ogg` step), and patches `.wav"` extension references in Python source to `.ogg"`. Prevents uncompressed WAV music tracks (50–80 MB each) from bloating the web archive.
+
+### Fixed
+- **Web build: Python never starts (`autorun` patch never matched)** — the CI `sed` command used the pattern `"autorun":0` but pygbag generates `autorun : 0,` (unquoted, with spaces). Fixed with `-E 's/"?autorun"?\s*:\s*0/autorun : 1/g'` to match both formats.
+- **Web build: `pwa_inject.py` autorun patch had the same mismatch** — replaced the `str.replace('"autorun":0', ...)` call with `re.sub(r'"?autorun"?\s*:\s*0', 'autorun : 1', html)` for robust matching.
+- **Web build: `pwa_inject.py` idempotency check too broad** — the `<link rel="manifest">` early-return guard caused all three Python patches (UME-blocking-loop removal, CDN-preload skip, autorun fix) to be silently skipped on any re-run where the manifest was already injected. Changed to a `<!-- pwa_inject: done -->` marker written only after all patches complete.
+- **WASM crash-dialog deadlock** — `CrashDialog._run()` contains a blocking `while running:` event loop that deadlocks the browser tab. The guard preventing it from executing on WASM used `platform.system() == "Emscripten"`, which may not reliably match on all emscripten Python builds. Replaced with `sys.platform == "emscripten"` (the standard WASM identifier used everywhere else in the codebase). Same fix applied to the `_acquire_lock()` and `_setup_logging()` guards for consistency.
+
+---
+
+## [1.0.19] — 2026-06-03
+
+### Fixed
+- **Web build: archive entry point missing** — pygbag was passed `web_main.py` directly, producing `assets/web_main.py` inside the archive; `shell.source()` then couldn't find `assets/main.py`. Fixed by copying to `main.py` before the pygbag build step and removing it after.
+- **Web build: CDN/PyPI preload hangs on startup** — `TopLevel_async_handler.preload_code` was scanning bundled imports and trying to install them from PyPI, hanging indefinitely. `pwa_inject.py` now sets `aio.cross.simulator = True` before `shell.source()` to skip all network-side package checks.
+- **Web build: `init_window` silent WASM crash** — reading `platform.window.innerWidth` in `window_web.py` during startup caused a silent crash in emscripten before the JS bridge was fully initialised. Removed; initial canvas size now reads from `cfg` only.
+- **Web build: `fb_ar:0` produced 0×0 canvas** — reverting an earlier attempt to set `fb_ar:0`; pygbag divides by the aspect ratio value and zero caused a degenerate canvas. Kept at the calculated 1.77 value.
+- **Web build: `overflow:hidden` CSS clipped UME infobox** — `html`/`body` overflow styles were being injected by the CI patch step, which propagated to the viewport and clipped the position:fixed "click to start" infobox. CSS patch removed.
+- **Web audio quality** — pygame mixer pre-init changed to 48 kHz / 8192-sample buffer when running under emscripten, matching the browser's native WebAudio rate and providing enough headroom to prevent underruns at 30 fps.
+
+---
+
+## [1.0.18] — 2026-06-02
+
+### Fixed
+- **Web build: UME gate — clicks not registering on GitHub Pages** — `platform.window.MM.UME` was never set to `True` by user clicks in the deployed build, leaving the game on the loading screen indefinitely. `pwa_inject.py` now patches the blocking `while not MM.UME` loop out of the pygbag HTML template at build time.
+- **Web build: CDN package-index download hangs on startup** — pygbag's preloader was fetching a package index from the CDN before running user code, causing a 30–60 s hang. Bypassed in `pwa_inject.py` by patching `aio.cross.simulator = True` into the template.
+- **Hermit Crab: grounded food and algae not consumed** — `algae_eater` flag was missing from the Hermit Crab species definition, so crabs ignored food resting on the tank floor and never cleaned algae. Flag added to match Amano Shrimp behaviour.
+
+---
+
 ## [1.0.17] — 2026-06-01
 
 ### Fixed
@@ -483,7 +519,11 @@ elusive Moonshell Hermit (Epic) is a tank highlight when it appears.
 
 ---
 
-[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.7...HEAD
+[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.20...HEAD
+[1.0.20]:     https://github.com/trumanac/Aquarium98/releases/tag/v1.0.20
+[1.0.19]:     https://github.com/trumanac/Aquarium98/releases/tag/v1.0.19
+[1.0.18]:     https://github.com/trumanac/Aquarium98/releases/tag/v1.0.18
+[1.0.17]:     https://github.com/trumanac/Aquarium98/releases/tag/v1.0.17
 [1.0.7]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.7
 [1.0.6]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.6
 [1.0.5]:      https://github.com/trumanac/Aquarium98/releases/tag/v1.0.5

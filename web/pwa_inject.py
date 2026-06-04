@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -194,7 +195,8 @@ def _patch_html() -> None:
         print("WARNING: build/web/index.html not found — skipping HTML patch.")
         return
     html = html_path.read_text(encoding="utf-8")
-    if '<link rel="manifest"' in html:
+    # Use a unique marker so re-running is safe without skipping Python patches.
+    if "<!-- pwa_inject: done -->" in html:
         print("  index.html already patched — skipping.")
         return
 
@@ -218,13 +220,15 @@ def _patch_html() -> None:
     # to users who only see the grey game area.  With autorun:1 Python starts at
     # once; audio stays silent until the first canvas interaction (Chrome's
     # autoplay policy), which is normal game UX.
-    if '"autorun":0' in html:
-        html = html.replace('"autorun":0', '"autorun":1', 1)
+    # pygbag may format this as "autorun":0 or autorun : 0 depending on version.
+    autorun_patched = re.sub(r'"?autorun"?\s*:\s*0', 'autorun : 1', html, count=1)
+    if autorun_patched != html:
+        html = autorun_patched
         print("  index.html  (autorun:1 — Python starts without user click)")
     else:
         print("  index.html  WARNING: autorun:0 not found — already set or template changed")
 
-    html = html.replace("</head>", _PWA_HEAD + "\n</head>", 1)
+    html = html.replace("</head>", _PWA_HEAD + "\n<!-- pwa_inject: done -->\n</head>", 1)
     html_path.write_text(html, encoding="utf-8")
     print("  index.html  (manifest + SW registration injected)")
 
