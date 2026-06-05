@@ -21,6 +21,12 @@ from pathlib import Path
 
 # ── path setup ────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent
+# pygbag places main.py inside assets/ in the archive (the entry point lives
+# at /data/data/aquarium98/assets/main.py after extraction).  Step up one
+# level so ROOT points at the actual game root where aquarium.py and src/ live.
+# On desktop __file__ is already at the project root, so this is a no-op there.
+if sys.platform == "emscripten":
+    ROOT = ROOT.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "web"))   # exposes window_web.py
 
