@@ -154,6 +154,12 @@ _PWA_HEAD = """\
           .catch(e => console.warn("[SW] registration failed:", e));
       });
     }
+    // Force pyconsole (Python terminal) visible so Python print() output
+    // is always readable — critical for diagnosing silent startup errors.
+    window.addEventListener("load", () => {
+      var pc = document.getElementById("pyconsole");
+      if (pc) { pc.hidden = false; pc.style.zIndex = "10"; }
+    });
   </script>"""
 
 # ── Python template patches ────────────────────────────────────────────────────

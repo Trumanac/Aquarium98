@@ -30,6 +30,16 @@ if sys.platform == "emscripten":
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "web"))   # exposes window_web.py
 
+# ── early JS console logging so we can see Python is alive in browser DevTools ─
+def _jsconsole(msg: str) -> None:
+    try:
+        import platform as _plt
+        _plt.window.console.log("[web_main] " + str(msg))
+    except Exception:
+        pass
+
+_jsconsole(f"Python loaded — ROOT={ROOT}  sys.platform={sys.platform}")
+
 # ── inject stubs BEFORE any game module is imported ───────────────────────────
 
 # --- src.tray: no system tray in the browser ---
@@ -90,12 +100,15 @@ _icon_gen_mod.ensure_icons = lambda: None
 sys.modules["src.icon_gen"] = _icon_gen_mod
 
 # ── import and run the game ───────────────────────────────────────────────────
+_jsconsole("importing aquarium...")
 try:
     import aquarium as _game  # noqa: E402
     _IMPORT_ERROR: Exception | None = None
+    _jsconsole("aquarium imported OK")
 except Exception as _exc:  # noqa: BLE001
     import traceback as _tb
     _IMPORT_ERROR = _exc
+    _jsconsole(f"FATAL import error: {type(_exc).__name__}: {_exc}")
     print("FATAL: failed to import aquarium:", _exc)
     print(_tb.format_exc())
     _game = None  # type: ignore[assignment]
@@ -104,6 +117,7 @@ except Exception as _exc:  # noqa: BLE001
 # pygbag requires a callable named `main` in the entry file.
 async def main() -> int:
     import traceback as _tb
+    _jsconsole("main() coroutine started")
     # Draw a "Starting..." splash immediately so the canvas is not grey.
     print("web: starting — drawing startup splash")
     _render_status("Starting Aquarium 98...")
@@ -111,11 +125,13 @@ async def main() -> int:
 
     if _game is None:
         msg = type(_IMPORT_ERROR).__name__ + ": " + str(_IMPORT_ERROR)
+        _jsconsole(f"game import failed: {msg}")
         print("web: import failed:", msg)
         _render_fatal(msg)
         while True:
             await asyncio.sleep(1)
 
+    _jsconsole("calling _game.main()")
     print("web: calling _game.main()")
     try:
         result = await _game.main()
@@ -123,6 +139,7 @@ async def main() -> int:
         raise  # let pygbag handle task cancellation normally
     except BaseException as _exc:  # noqa: BLE001 — catch SystemExit, Exception, etc.
         msg = _tb.format_exc()
+        _jsconsole(f"game.main() raised: {msg[:200]}")
         print("web: FATAL:", msg)
         _render_fatal(msg)
         while True:
@@ -154,6 +171,14 @@ async def main() -> int:
 def _render_status(message: str) -> None:
     """Draw a simple 'Starting...' splash on the canvas."""
     print("web: _render_status:", message)
+    _jsconsole(f"_render_status: {message}")
+    # Always update infobox so there's a visible status even if pygame fails
+    try:
+        import platform as _plt
+        _plt.window.infobox.style.display = "block"
+        _plt.window.infobox.innerText = message
+    except Exception:
+        pass
     try:
         import pygame as _pg
         _pg.init()  # full init so display + font subsystems are both ready
@@ -170,13 +195,25 @@ def _render_status(message: str) -> None:
         rendered = font.render(message, True, (255, 255, 255))
         surf.blit(rendered, (20, 20))
         _pg.display.flip()
+        _jsconsole("_render_status: pygame.display.flip() called OK")
     except Exception as _e:  # noqa: BLE001
+        _jsconsole(f"_render_status failed: {_e}")
         print("web: _render_status failed:", _e)
 
 
 def _render_fatal(message: str) -> None:
     """Display a fatal-error traceback on the pygame canvas."""
     print("web: _render_fatal:", message[:400])
+    _jsconsole(f"_render_fatal: {message[:300]}")
+    # Show error in infobox (always visible, even if pygame fails)
+    try:
+        import platform as _plt
+        _plt.window.infobox.style.display = "block"
+        _plt.window.infobox.style.background = "darkred"
+        _plt.window.infobox.style.color = "white"
+        _plt.window.infobox.innerText = "ERROR: " + message[:200]
+    except Exception:
+        pass
     try:
         import pygame as _pg
         _pg.init()  # full init so subsystems are ready
