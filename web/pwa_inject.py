@@ -94,20 +94,15 @@ self.addEventListener("install", event => {{
 }});
 
 self.addEventListener("activate", event => {{
+  // No clients.navigate() here — that would interrupt the 94 MB archive
+  // download mid-flight when a new SW activates.  The navigation-first fetch
+  // strategy already ensures index.html is always fresh on the next load.
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
         keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
       ))
       .then(() => self.clients.claim())
-      .then(() =>
-        // Force all controlled pages to reload so they pick up the new
-        // archive and Python code immediately — without this, users need
-        // two manual refreshes to see a new deployment.
-        self.clients.matchAll({{ type: "window" }}).then(clients =>
-          clients.forEach(c => c.navigate(c.url))
-        )
-      )
   );
 }});
 
@@ -231,6 +226,38 @@ _SOURCE_NEW = (
 )
 
 
+# Patch 4 — replace synchronous tar.extractall() with async iteration.
+# tarfile.extractall() is blocking: on a 94 MB archive it holds the JS event
+# loop for 30-60+ seconds, making the browser appear completely frozen/crashed.
+# Replacing it with tar.next() + tar.extract() called one-file-at-a-time, with
+# await asyncio.sleep(0) every 50 files, keeps the browser responsive and gives
+# users a visible progress indicator while the archive unpacks.
+# The filter='tar' kwarg requires Python 3.12 — pygbag 0.9.3 bundles 3.12. ✓
+_EXTRACTALL_OLD = (
+    "            tar = tarfile.open(fileobj=archive, mode=\"r:gz\")\n"
+    "            tar.extractall(path=appdir.as_posix(), filter='tar')\n"
+    "            tar.close()\n"
+)
+_EXTRACTALL_NEW = (
+    "            tar = tarfile.open(fileobj=archive, mode=\"r:gz\")\n"
+    "            platform.window.infobox.innerText = 'Extracting files...'\n"
+    "            await asyncio.sleep(0)\n"
+    "            _n = 0\n"
+    "            while True:\n"
+    "                _m = tar.next()\n"
+    "                if _m is None:\n"
+    "                    break\n"
+    "                tar.extract(_m, path=appdir.as_posix(), filter='tar')\n"
+    "                _n += 1\n"
+    "                if _n % 50 == 0:\n"
+    "                    platform.window.infobox.innerText = f'Loading... ({_n} files extracted)'\n"
+    "                    await asyncio.sleep(0)\n"
+    "            platform.window.infobox.innerText = 'Starting game...'\n"
+    "            await asyncio.sleep(0)\n"
+    "            tar.close()\n"
+)
+
+
 def _patch_html() -> None:
     html_path = BUILD_DIR / "index.html"
     if not html_path.exists():
@@ -276,6 +303,13 @@ def _patch_html() -> None:
         print("  index.html  (autorun:1 — Python starts without user click)")
     else:
         print("  index.html  WARNING: autorun:0 not found — already set or template changed")
+
+    # Patch 4: async tar extraction — keeps browser responsive during unpack.
+    if _EXTRACTALL_OLD in html:
+        html = html.replace(_EXTRACTALL_OLD, _EXTRACTALL_NEW, 1)
+        print("  index.html  (async tar extraction with progress indicator)")
+    else:
+        print("  index.html  WARNING: tar.extractall line not found — template may have changed")
 
     html = html.replace("</head>", _PWA_HEAD + "\n<!-- pwa_inject: done -->\n</head>", 1)
     html_path.write_text(html, encoding="utf-8")

@@ -48,17 +48,17 @@ jobs:
       - name: Convert audio to OGG for web (MP3 unsupported; WAV music tracks too large)
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          # Convert MP3 → OGG
+          sudo apt-get install -y --no-install-recommends ffmpeg pngquant
+          # Convert MP3 → OGG at 64 kbps (halves audio size vs default quality)
           for f in assets/audio/*.mp3; do
             [ -f "$f" ] || continue
-            ffmpeg -i "$f" "${f%.mp3}.ogg" -y -loglevel error
+            ffmpeg -i "$f" -b:a 64k "${f%.mp3}.ogg" -y -loglevel error
             rm "$f"
           done
-          # Convert WAV → OGG (music tracks are large; SFX compress well too)
+          # Convert WAV → OGG at 64 kbps (music tracks are large; 64k sounds fine)
           for f in assets/audio/*.wav; do
             [ -f "$f" ] || continue
-            ffmpeg -i "$f" "${f%.wav}.ogg" -y -loglevel error
+            ffmpeg -i "$f" -b:a 64k "${f%.wav}.ogg" -y -loglevel error
             rm "$f"
           done
           # Patch extension references in Python source to .ogg
@@ -66,6 +66,17 @@ jobs:
           find . -maxdepth 1 -name "*.py" -exec sed -i 's/\.mp3"/\.ogg"/g' {} +
           find src -name "*.py" -exec sed -i 's/\.wav"/\.ogg"/g' {} +
           find . -maxdepth 1 -name "*.py" -exec sed -i 's/\.wav"/\.ogg"/g' {} +
+
+      - name: Optimize PNG sprites for web (palette quantization, ~40-60% size reduction)
+        run: |
+          # pngquant reduces PNG size by 40-60% with minimal visual quality loss.
+          # --quality 70-90: good balance between file size and sprite fidelity.
+          # --skip-if-larger: never make a file larger (safe for already-optimized PNGs).
+          # --force --ext .png: overwrite original so pygbag picks up the smaller files.
+          find assets -name "*.png" -exec \
+            pngquant --quality 70-90 --skip-if-larger --force --ext .png {} \;
+          echo "PNG size after optimization:"
+          du -sh assets/sprites/ 2>/dev/null || du -sh assets/ 2>/dev/null | head -5
 
       - name: Build
         # pygbag's template (custom_site) looks for assets/main.py in the
@@ -125,6 +136,23 @@ jobs:
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
           python web/pwa_inject.py --version "$VERSION"
+
+      - name: Verify pwa_inject patches applied
+        run: |
+          echo "=== Checking pwa_inject.py patches ==="
+          grep -q "pwa_inject: done" build/web/index.html \
+            && echo "OK: <!-- pwa_inject: done --> marker present" \
+            || (echo "FAIL: pwa_inject patches were not applied!"; exit 1)
+          grep -q "aio.cross" build/web/index.html \
+            && echo "OK: CDN bypass patch present" \
+            || echo "WARN: CDN bypass patch not found"
+          grep -q "autorun.*1\|autorun : 1" build/web/index.html \
+            && echo "OK: autorun:1 patch present" \
+            || echo "WARN: autorun:1 patch not found"
+          grep -q "async extraction\|files extracted\|tar.next" build/web/index.html \
+            && echo "OK: async extraction patch present" \
+            || echo "WARN: async extraction patch not found"
+          echo "Archive size: $(du -sh build/web/aquarium98.tar.gz 2>/dev/null || echo 'not found')"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
