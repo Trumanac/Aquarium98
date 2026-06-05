@@ -103,13 +103,23 @@ self.addEventListener("activate", event => {{
   );
 }});
 
-// Cache-first for assets; navigation requests fall back to index.html
-// so the app loads correctly offline regardless of the URL entered.
-// Large assets not in PRECACHE_FILES are cached lazily on first fetch.
+// Navigation requests: network-first so index.html always reflects the latest
+// deploy.  Falls back to the cached copy only when offline.  This prevents the
+// service worker from serving a stale index.html (and therefore a stale autorun
+// or Python config) to users after a new release is deployed.
+// All other assets remain cache-first for speed + offline support.
 self.addEventListener("fetch", event => {{
   if (event.request.mode === "navigate") {{
     event.respondWith(
-      caches.match("./index.html").then(r => r || fetch(event.request))
+      fetch(event.request)
+        .then(response => {{
+          if (response && response.ok) {{
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, cloned));
+          }}
+          return response;
+        }})
+        .catch(() => caches.match("./index.html"))
     );
     return;
   }}

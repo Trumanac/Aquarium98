@@ -9,6 +9,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.21] — 2026-06-04
+
+### Fixed
+- **Web build: service worker serving stale `index.html` after deploy** — the navigation fetch handler used a cache-first strategy, meaning users who visited the page before a new release kept seeing the old `index.html` (with `autorun:0`) even after CI deployed a fix. Changed to network-first: the browser always fetches `index.html` from the server when online, updates the cache with the fresh copy, and falls back to cache only when offline. This unblocks every future web-build fix from reaching users without requiring a hard refresh.
+
+---
+
 ## [1.0.20] — 2026-06-04
 
 ### Changed
@@ -519,7 +526,8 @@ elusive Moonshell Hermit (Epic) is a tank highlight when it appears.
 
 ---
 
-[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.20...HEAD
+[Unreleased]: https://github.com/trumanac/Aquarium98/compare/v1.0.21...HEAD
+[1.0.21]:     https://github.com/trumanac/Aquarium98/releases/tag/v1.0.21
 [1.0.20]:     https://github.com/trumanac/Aquarium98/releases/tag/v1.0.20
 [1.0.19]:     https://github.com/trumanac/Aquarium98/releases/tag/v1.0.19
 [1.0.18]:     https://github.com/trumanac/Aquarium98/releases/tag/v1.0.18
