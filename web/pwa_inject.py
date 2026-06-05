@@ -181,8 +181,10 @@ _TOPLEVEL_NEW = (
     "        _aio_cross_pre.simulator = True\n"
     "    except Exception:\n"
     "        pass\n"
+    "    platform.window.console.log('[pwa] calling start_toplevel')\n"
     "    # start async top level machinery if not started and add a console in any case if requested.\n"
     "    await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)\n"
+    "    platform.window.console.log('[pwa] start_toplevel done')\n"
 )
 
 # Patch 1 — remove the MM.UME blocking loop.
@@ -220,6 +222,8 @@ _SOURCE_NEW = (
     "        _aio_cross.simulator = True\n"
     "    except Exception as _pwa_e:\n"
     "        print('pwa simulator bypass:', _pwa_e)\n"
+    "    import os as _pwa_os\n"
+    "    platform.window.console.log('[pwa] shell.source: main.py exists=' + str(_pwa_os.path.exists(str(main))) + ' main=' + str(main))\n"
     "    platform.window.infobox.innerText = 'Loading game...'\n"
     "    await asyncio.sleep(0)\n"
     "    await shell.source(main, callback=ui_callback)\n"
@@ -252,10 +256,66 @@ _EXTRACTALL_NEW = (
     "                if _n % 50 == 0:\n"
     "                    platform.window.infobox.innerText = f'Loading... ({_n} files extracted)'\n"
     "                    await asyncio.sleep(0)\n"
+    "            platform.window.console.log('[pwa] extracted ' + str(_n) + ' files')\n"
     "            platform.window.infobox.innerText = 'Starting game...'\n"
     "            await asyncio.sleep(0)\n"
     "            tar.close()\n"
 )
+
+
+# Patch 5 — embed.counter() timeout.
+# In custom_site mode, embed.counter() may never increment before shell.source
+# starts the render loop (chicken-and-egg).  Cap the wait at 3 seconds and log
+# the counter value so we can see whether this loop was the blocker.
+_EMBED_COUNTER_OLD = (
+    "    # wait preloading complete : that includes images and wasm compilation of bundled modules\n"
+    "    while embed.counter()<0:\n"
+    "        await asyncio.sleep(.1)\n"
+)
+_EMBED_COUNTER_NEW = (
+    "    # wait preloading complete (pwa_inject: 3s timeout added)\n"
+    "    _pwat = 0\n"
+    "    while embed.counter()<0:\n"
+    "        await asyncio.sleep(.1)\n"
+    "        _pwat += 1\n"
+    "        if _pwat >= 30:\n"
+    "            platform.window.console.log('[pwa] embed.counter=' + str(embed.counter()) + ' after 3s, forcing continue')\n"
+    "            break\n"
+    "    platform.window.console.log('[pwa] embed.counter=' + str(embed.counter()))\n"
+)
+
+# Patch 6 — error wrapper for asyncio.run(custom_site()).
+# Any unhandled exception in custom_site() (including NameError for undefined
+# TopLevel_async_handler, FileNotFoundError for main.py, etc.) fails silently
+# without this wrapper.  This catches everything and shows it in the console
+# and infobox so we can diagnose startup failures.
+_ASYNCIO_RUN_OLD = "asyncio.run( custom_site() )\n"
+_ASYNCIO_RUN_NEW = (
+    "async def _pwa_run():\n"
+    "    try:\n"
+    "        await custom_site()\n"
+    "    except BaseException as _e:\n"
+    "        import traceback as _tb\n"
+    "        _m = _tb.format_exc()\n"
+    "        try:\n"
+    "            platform.window.console.log('[pwa] FATAL: ' + repr(_e))\n"
+    "            platform.window.console.log('[pwa] ' + _m[:800])\n"
+    "            platform.window.infobox.innerText = 'FATAL: ' + str(_e)[:200]\n"
+    "            platform.window.infobox.style.display = 'block'\n"
+    "            platform.window.infobox.style.background = 'darkred'\n"
+    "            platform.window.infobox.style.color = 'white'\n"
+    "        except Exception:\n"
+    "            pass\n"
+    "\n"
+    "asyncio.run(_pwa_run())\n"
+)
+
+# Patch 7 — appdir.mkdir(exist_ok=True).
+# On repeat page loads BrowserFS may have cached the directory from a previous
+# session.  The default mkdir() raises FileExistsError which kills custom_site()
+# before the archive is even extracted — silently, without our Patch 6 wrapper.
+_MKDIR_OLD = "    appdir.mkdir()\n"
+_MKDIR_NEW = "    appdir.mkdir(exist_ok=True)\n"
 
 
 def _patch_html() -> None:
@@ -310,6 +370,27 @@ def _patch_html() -> None:
         print("  index.html  (async tar extraction with progress indicator)")
     else:
         print("  index.html  WARNING: tar.extractall line not found — template may have changed")
+
+    # Patch 5: embed.counter() timeout.
+    if _EMBED_COUNTER_OLD in html:
+        html = html.replace(_EMBED_COUNTER_OLD, _EMBED_COUNTER_NEW, 1)
+        print("  index.html  (embed.counter timeout + diagnostic)")
+    else:
+        print("  index.html  WARNING: embed.counter loop not found — template may have changed")
+
+    # Patch 6: asyncio.run error wrapper.
+    if _ASYNCIO_RUN_OLD in html:
+        html = html.replace(_ASYNCIO_RUN_OLD, _ASYNCIO_RUN_NEW, 1)
+        print("  index.html  (asyncio.run error wrapper)")
+    else:
+        print("  index.html  WARNING: asyncio.run(custom_site()) not found — template may have changed")
+
+    # Patch 7: appdir.mkdir(exist_ok=True) — safe on repeat loads.
+    if _MKDIR_OLD in html:
+        html = html.replace(_MKDIR_OLD, _MKDIR_NEW, 1)
+        print("  index.html  (appdir.mkdir exist_ok=True)")
+    else:
+        print("  index.html  WARNING: appdir.mkdir() not found — template may have changed")
 
     html = html.replace("</head>", _PWA_HEAD + "\n<!-- pwa_inject: done -->\n</head>", 1)
     html_path.write_text(html, encoding="utf-8")
