@@ -95,11 +95,19 @@ self.addEventListener("install", event => {{
 
 self.addEventListener("activate", event => {{
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
+    caches.keys()
+      .then(keys => Promise.all(
         keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
+      .then(() =>
+        // Force all controlled pages to reload so they pick up the new
+        // archive and Python code immediately — without this, users need
+        // two manual refreshes to see a new deployment.
+        self.clients.matchAll({{ type: "window" }}).then(clients =>
+          clients.forEach(c => c.navigate(c.url))
+        )
       )
-    ).then(() => self.clients.claim())
   );
 }});
 
@@ -164,6 +172,24 @@ _PWA_HEAD = """\
 
 # ── Python template patches ────────────────────────────────────────────────────
 
+# Patch 0 — set aio.cross.simulator = True BEFORE start_toplevel.
+# start_toplevel internally calls preload_code which checks the CDN for packages.
+# The simulator flag must be set before start_toplevel, not just before shell.source.
+_TOPLEVEL_OLD = (
+    "    # start async top level machinery if not started and add a console in any case if requested.\n"
+    "    await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)\n"
+)
+_TOPLEVEL_NEW = (
+    "    # pwa_inject.py: bypass CDN/PyPI BEFORE start_toplevel to prevent hang.\n"
+    "    try:\n"
+    "        import aio.cross as _aio_cross_pre\n"
+    "        _aio_cross_pre.simulator = True\n"
+    "    except Exception:\n"
+    "        pass\n"
+    "    # start async top level machinery if not started and add a console in any case if requested.\n"
+    "    await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)\n"
+)
+
 # Patch 1 — remove the MM.UME blocking loop.
 # MM.UME is a read-only getter on Pygbag's MediaManager; setting it from JS
 # silently fails, so the loop never exits.
@@ -215,6 +241,13 @@ def _patch_html() -> None:
     if "<!-- pwa_inject: done -->" in html:
         print("  index.html already patched — skipping.")
         return
+
+    # Patch 0: CDN bypass before start_toplevel (must come before Patch 2).
+    if _TOPLEVEL_OLD in html:
+        html = html.replace(_TOPLEVEL_OLD, _TOPLEVEL_NEW, 1)
+        print("  index.html  (CDN bypass injected before start_toplevel)")
+    else:
+        print("  index.html  WARNING: start_toplevel line not found — template may have changed")
 
     # Patch 1: remove UME blocking loop.
     if _UME_OLD in html:
