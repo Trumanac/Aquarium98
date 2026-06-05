@@ -210,23 +210,33 @@ _UME_NEW = (
 _SOURCE_OLD = (
     "    await shell.source(main, callback=ui_callback)\n"
 )
-# preload_code() has a single flag: `if not aio.cross.simulator:` that gates
-# ALL network activity (check_list, pip_install, PyPI lookups).  Setting
-# aio.cross.simulator = True skips it entirely while still letting preload_code
-# run the important os.chdir / sys.path setup at the top of the function.
-# This is simpler and more reliable than patching class methods.
+# shell.source() internally calls preload_code() which scans main.py's imports,
+# finds non-CDN modules (window_web, aquarium, src.*), and either hangs waiting
+# for CDN or swallows the ImportError silently — so exec never runs.
+# Fix: bypass shell.source entirely and exec() main.py directly.
+# The explicit namespace sets __file__ (which shell.source may not set) and
+# includes all template globals so `import platform`, `asyncio.run()`, etc. work.
 _SOURCE_NEW = (
-    "    # pwa_inject.py: skip CDN/PyPI package checks (all deps are bundled).\n"
-    "    try:\n"
-    "        import aio.cross as _aio_cross\n"
-    "        _aio_cross.simulator = True\n"
-    "    except Exception as _pwa_e:\n"
-    "        print('pwa simulator bypass:', _pwa_e)\n"
+    "    # pwa_inject.py: exec main.py directly — bypass shell.source/preload_code.\n"
     "    import os as _pwa_os\n"
-    "    platform.window.console.log('[pwa] shell.source: main.py exists=' + str(_pwa_os.path.exists(str(main))) + ' main=' + str(main))\n"
+    "    platform.window.console.log('[pwa] loading main.py exists=' + str(_pwa_os.path.exists(str(main))))\n"
     "    platform.window.infobox.innerText = 'Loading game...'\n"
     "    await asyncio.sleep(0)\n"
-    "    await shell.source(main, callback=ui_callback)\n"
+    "    try:\n"
+    "        with open(str(main)) as _f:\n"
+    "            _src = _f.read()\n"
+    "        _ns = {**globals(), '__file__': str(main), '__name__': '__main__'}\n"
+    "        exec(compile(_src, str(main), 'exec'), _ns)\n"
+    "        platform.window.console.log('[pwa] exec returned (game loop scheduled)')\n"
+    "    except Exception as _e:\n"
+    "        import traceback as _tb\n"
+    "        platform.window.console.log('[pwa] EXEC FAILED: ' + repr(_e))\n"
+    "        platform.window.console.log('[pwa] ' + _tb.format_exc()[:800])\n"
+    "        platform.window.infobox.innerText = 'EXEC FAILED: ' + str(_e)[:200]\n"
+    "        platform.window.infobox.style.display = 'block'\n"
+    "        platform.window.infobox.style.background = 'darkred'\n"
+    "        platform.window.infobox.style.color = 'white'\n"
+    "        raise\n"
 )
 
 
