@@ -274,16 +274,28 @@ async def main() -> int:
         cfg["last_opened_date"] = today_str
 
         # Show startup splash before the main game window is created
+        _mix_buf = 8192 if sys.platform == "emscripten" else 512
         try:
-            # Browser Web Audio contexts run natively at 48000 Hz on modern hardware.
-            # CI encodes all OGG/WAV files at 48000 Hz (-ar 48000) so the mixer
-            # never has to resample at runtime — resampling in the WASM audio
-            # pipeline is what causes "digital grit" distortion on web.
-            # Buffer: WASM event-loop can hold Python execution for >85 ms (GC
-            # spikes, heavy frames).  8192 samples = 170 ms at 48000 Hz gives
-            # enough headroom to survive those spikes without audio dropouts.
-            _mix_freq = 48000 if sys.platform == "emscripten" else 44100
-            _mix_buf  = 8192  if sys.platform == "emscripten" else 512
+            # SDL2-WASM feeds audio to the browser's Web Audio API.  If the
+            # mixer sample rate doesn't match the AudioContext.sampleRate (which
+            # is set by the OS audio device — typically 44100 or 48000 Hz), SDL
+            # must resample internally using a low-quality WASM resampler that
+            # causes the "digital grit" distortion.  Query the hardware rate
+            # first so we can match it exactly and skip all internal resampling.
+            _mix_freq = 44100  # desktop default / WASM fallback
+            if sys.platform == "emscripten":
+                try:
+                    import platform as _plt_pre
+                    _hw_ctx = _plt_pre.window.AudioContext.new()
+                    _hw_rate = int(_hw_ctx.sampleRate)
+                    _hw_ctx.close()
+                    if 22050 <= _hw_rate <= 192000:
+                        _mix_freq = _hw_rate
+                    _plt_pre.window.console.log(
+                        f"[audio] AudioContext.sampleRate={_hw_rate} → pre_init at {_mix_freq} Hz"
+                    )
+                except Exception:
+                    _mix_freq = 48000  # modern-hardware fallback
             pygame.mixer.pre_init(_mix_freq, -16, 2, _mix_buf)
         except Exception:  # noqa: BLE001 — some WASM audio backends reject pre_init params
             pass
@@ -297,8 +309,7 @@ async def main() -> int:
                 import platform as _plt_audio
                 _ai = pygame.mixer.get_init()
                 _plt_audio.window.console.log(
-                    f"[audio] mixer.get_init()={_ai}  "
-                    f"requested=({_mix_freq}Hz, -16, 2, buf={_mix_buf})"
+                    f"[audio] mixer.get_init()={_ai}  buf={_mix_buf}"
                 )
             except Exception:  # noqa: BLE001
                 pass
@@ -2120,7 +2131,12 @@ async def main() -> int:
             pygame.display.flip()
 
             await asyncio.sleep(0)
-            clock.tick(RENDER_FPS)
+            # In WASM, clock.tick(fps) can busy-spin after the yield, blocking
+            # the browser's audio callbacks for up to 20+ ms on high-refresh
+            # displays (120/144 Hz RAF = 7 ms/tick; sleep remainder ≈ 20 ms).
+            # Pass 0 to only record elapsed time; the two asyncio.sleep(0) calls
+            # above already pace the loop via RequestAnimationFrame.
+            clock.tick(0 if sys.platform == "emscripten" else RENDER_FPS)
             actual_fps = clock.get_fps()
             fps_smoothed = fps_smoothed * 0.9 + actual_fps * 0.1
 
