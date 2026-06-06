@@ -49,19 +49,20 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends ffmpeg pngquant
-          # Convert MP3 → OGG at 96 kbps, normalised to 44100 Hz.
-          # -ar 44100: forces all output to 44100 Hz so pygame.mixer (also
-          # pre_init'd at 44100 Hz) never has to resample at runtime — the
-          # main cause of the "digital grit" distortion heard in the browser.
+          # Convert MP3 → OGG at 96 kbps, normalised to 48000 Hz.
+          # -ar 48000: browser Web Audio contexts run at 48000 Hz on modern
+          # hardware.  Pre-encoding files at 48000 Hz means pygame.mixer
+          # (pre_init'd at 48000 Hz) never resamples at runtime — runtime
+          # resampling in the WASM audio pipeline causes "digital grit".
           for f in assets/audio/*.mp3; do
             [ -f "$f" ] || continue
-            ffmpeg -i "$f" -b:a 96k -ar 44100 "${f%.mp3}.ogg" -y -loglevel error
+            ffmpeg -i "$f" -b:a 96k -ar 48000 "${f%.mp3}.ogg" -y -loglevel error
             rm "$f"
           done
-          # Convert WAV → OGG at 96 kbps, also normalised to 44100 Hz.
+          # Convert WAV → OGG at 96 kbps, also normalised to 48000 Hz.
           for f in assets/audio/*.wav; do
             [ -f "$f" ] || continue
-            ffmpeg -i "$f" -b:a 96k -ar 44100 "${f%.wav}.ogg" -y -loglevel error
+            ffmpeg -i "$f" -b:a 96k -ar 48000 "${f%.wav}.ogg" -y -loglevel error
             rm "$f"
           done
           # Patch extension references in Python source to .ogg

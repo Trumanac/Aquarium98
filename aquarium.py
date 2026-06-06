@@ -275,13 +275,13 @@ async def main() -> int:
 
         # Show startup splash before the main game window is created
         try:
-            # OGG/WAV audio is encoded at 44100 Hz (ffmpeg default / CI -ar 44100).
-            # Requesting 48000 Hz forces real-time 44100→48000 resampling for
-            # every sound in the WASM audio pipeline — the cause of the "digital
-            # grit" distortion on web.  44100 Hz avoids all resampling.
-            # Buffer: WASM event-loop yields ~30×/sec; 4096 samples (~93 ms at
-            # 44100 Hz) gives ample headroom without noticeable latency.
-            _mix_freq = 44100
+            # Browser Web Audio contexts run natively at 48000 Hz on modern hardware.
+            # CI encodes all OGG/WAV files at 48000 Hz (-ar 48000) so the mixer
+            # never has to resample at runtime — resampling in the WASM audio
+            # pipeline is what causes "digital grit" distortion on web.
+            # Buffer: WASM event-loop yields ~30×/sec; 4096 samples (~85 ms at
+            # 48000 Hz) gives ample headroom without noticeable latency.
+            _mix_freq = 48000 if sys.platform == "emscripten" else 44100
             _mix_buf  = 4096 if sys.platform == "emscripten" else 512
             pygame.mixer.pre_init(_mix_freq, -16, 2, _mix_buf)
         except Exception:  # noqa: BLE001 — some WASM audio backends reject pre_init params
