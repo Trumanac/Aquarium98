@@ -97,14 +97,20 @@ _icon_gen_mod = types.ModuleType("src.icon_gen")
 _icon_gen_mod.ensure_icons = lambda: None
 sys.modules["src.icon_gen"] = _icon_gen_mod
 
-# NOTE: aquarium is NOT imported here at module level.
-# In pygbag's WASM environment, `import pygame` at module load time returns a
-# minimal stub — the real pygame attributes (init, USEREVENT, display, etc.)
-# are only available after the event loop has ticked at least once via
-# requestAnimationFrame.  aquarium.py uses pygame.USEREVENT at module level,
-# so importing it here would fail.  We defer to inside main() after yielding.
-
-_jsconsole("stubs injected — waiting for event loop to tick before importing game")
+# pwa_inject.py runs shell.source on a minimal "import pygame" script before
+# exec'ing this file, which downloads pygame from CDN so USEREVENT etc. are
+# available.  We still try to import aquarium at module level; if pygame is
+# somehow still a stub, the except defers the import to inside main().
+_jsconsole("stubs injected — importing aquarium...")
+try:
+    import aquarium as _game  # noqa: E402
+    _IMPORT_ERROR: Exception | None = None
+    _jsconsole("aquarium imported OK")
+except Exception as _exc:
+    import traceback as _tb_import
+    _IMPORT_ERROR = _exc
+    _jsconsole(f"module-level import failed ({type(_exc).__name__}: {_exc}) — will retry in main()")
+    _game = None  # type: ignore[assignment]
 
 
 # pygbag requires a callable named `main` in the entry file.
@@ -112,7 +118,6 @@ async def main() -> int:
     import traceback as _tb
     _jsconsole("main() coroutine started")
 
-    # Update the HTML infobox — works before pygame is ready.
     try:
         import platform as _plt
         _plt.window.infobox.style.display = "block"
@@ -120,31 +125,32 @@ async def main() -> int:
     except Exception:
         pass
 
-    # Yield to the event loop several times so pygbag's WASM runtime can
-    # populate the pygame module (attributes like init, USEREVENT, display etc.
-    # are only added after requestAnimationFrame fires at least once).
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
+    # If module-level import failed (pygame was still a stub), yield to give
+    # pygbag's event loop a chance to populate pygame, then retry once.
+    global _game, _IMPORT_ERROR
+    if _game is None:
+        _jsconsole("retrying aquarium import after event-loop yields...")
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        try:
+            import aquarium as _game  # noqa: F811
+            _IMPORT_ERROR = None
+            _jsconsole("aquarium imported OK on retry")
+        except Exception as _exc2:
+            _IMPORT_ERROR = _exc2
 
-    _jsconsole("event loop ticked — drawing startup splash")
+    _jsconsole("drawing startup splash")
     _render_status("Starting Aquarium 98...")
     await asyncio.sleep(0)
 
-    # Now import the game (pygame is fully populated by this point).
-    _jsconsole("importing aquarium...")
-    try:
-        import aquarium as _game
-        _jsconsole("aquarium imported OK")
-    except Exception as _exc:
-        msg = type(_exc).__name__ + ": " + str(_exc)
-        _jsconsole(f"FATAL import error: {msg}")
-        print("FATAL: failed to import aquarium:", _exc)
-        print(_tb.format_exc())
+    if _game is None:
+        msg = type(_IMPORT_ERROR).__name__ + ": " + str(_IMPORT_ERROR)
+        _jsconsole(f"game import failed: {msg}")
+        print("web: import failed:", msg)
         _render_fatal(msg)
         while True:
             await asyncio.sleep(1)
-        return 1  # unreachable
 
     _jsconsole("calling _game.main()")
     print("web: calling _game.main()")

@@ -167,20 +167,16 @@ _PWA_HEAD = """\
 
 # ── Python template patches ────────────────────────────────────────────────────
 
-# Patch 0 — set aio.cross.simulator = True BEFORE start_toplevel.
-# start_toplevel internally calls preload_code which checks the CDN for packages.
-# The simulator flag must be set before start_toplevel, not just before shell.source.
+# Patch 0 — wrap start_toplevel with console.log for diagnosis.
+# NOTE: aio.cross.simulator is intentionally NOT set here.  Setting
+# simulator=True blocks ALL CDN activity, including the pygame download,
+# leaving pygame as an empty stub with no attributes.  start_toplevel
+# does not scan user code so it does not hang; CDN is safe to enable.
 _TOPLEVEL_OLD = (
     "    # start async top level machinery if not started and add a console in any case if requested.\n"
     "    await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)\n"
 )
 _TOPLEVEL_NEW = (
-    "    # pwa_inject.py: bypass CDN/PyPI BEFORE start_toplevel to prevent hang.\n"
-    "    try:\n"
-    "        import aio.cross as _aio_cross_pre\n"
-    "        _aio_cross_pre.simulator = True\n"
-    "    except Exception:\n"
-    "        pass\n"
     "    platform.window.console.log('[pwa] calling start_toplevel')\n"
     "    # start async top level machinery if not started and add a console in any case if requested.\n"
     "    await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)\n"
@@ -210,23 +206,40 @@ _UME_NEW = (
 _SOURCE_OLD = (
     "    await shell.source(main, callback=ui_callback)\n"
 )
-# shell.source() internally calls preload_code() which scans main.py's imports,
-# finds non-CDN modules (window_web, aquarium, src.*), and either hangs waiting
-# for CDN or swallows the ImportError silently — so exec never runs.
-# Fix: bypass shell.source entirely and exec() main.py directly.
-# The explicit namespace sets __file__ (which shell.source may not set) and
-# includes all template globals so `import platform`, `asyncio.run()`, etc. work.
+# Two-step approach:
+# Step 1: run shell.source on a minimal "import pygame" script so that
+#   preload_code downloads pygame from the CDN.  We can't skip this step
+#   because with simulator=False (required for CDN), preload_code would
+#   also try to pip-install our custom modules (window_web, aquarium) and
+#   hang.  The minimal script has only stdlib/CDN imports, so preload_code
+#   finishes quickly.
+# Step 2: exec our real main.py directly (explicit namespace → __file__ is
+#   set correctly; no preload_code scanning our module graph).
 _SOURCE_NEW = (
-    "    # pwa_inject.py: exec main.py directly — bypass shell.source/preload_code.\n"
-    "    import os as _pwa_os\n"
-    "    platform.window.console.log('[pwa] loading main.py exists=' + str(_pwa_os.path.exists(str(main))))\n"
+    "    # pwa_inject.py: two-step load — CDN preload for pygame, then direct exec.\n"
+    "    import os as _pwa_os, sys as _pwa_sys\n"
+    "    _pwa_main_path = str(main)  # save before preload can overwrite main in globals\n"
+    "    platform.window.infobox.innerText = 'Loading pygame...'\n"
+    "    await asyncio.sleep(0)\n"
+    "    # Step 1: minimal script so preload_code downloads pygame from CDN.\n"
+    "    _pwa_pg_path = '/data/data/aquarium98/_pwa_pygame.py'\n"
+    "    open(_pwa_pg_path, 'w').write(\n"
+    "        'import pygame\\nimport asyncio\\nasync def main():\\n    pass\\nasyncio.run(main())\\n'\n"
+    "    )\n"
+    "    try:\n"
+    "        await shell.source(Path(_pwa_pg_path), callback=ui_callback)\n"
+    "        platform.window.console.log('[pwa] pygame preload done, has_init=' + str(hasattr(_pwa_sys.modules.get('pygame', object()), 'init')))\n"
+    "    except Exception as _pwa_pg_e:\n"
+    "        platform.window.console.log('[pwa] pygame preload warning: ' + repr(_pwa_pg_e))\n"
+    "    # Step 2: exec our actual main.py with __file__ and template globals.\n"
+    "    platform.window.console.log('[pwa] loading game, main.py exists=' + str(_pwa_os.path.exists(_pwa_main_path)))\n"
     "    platform.window.infobox.innerText = 'Loading game...'\n"
     "    await asyncio.sleep(0)\n"
     "    try:\n"
-    "        with open(str(main)) as _f:\n"
+    "        with open(_pwa_main_path) as _f:\n"
     "            _src = _f.read()\n"
-    "        _ns = {**globals(), '__file__': str(main), '__name__': '__main__'}\n"
-    "        exec(compile(_src, str(main), 'exec'), _ns)\n"
+    "        _ns = {**globals(), '__file__': _pwa_main_path, '__name__': '__main__'}\n"
+    "        exec(compile(_src, _pwa_main_path, 'exec'), _ns)\n"
     "        platform.window.console.log('[pwa] exec returned (game loop scheduled)')\n"
     "    except Exception as _e:\n"
     "        import traceback as _tb\n"
