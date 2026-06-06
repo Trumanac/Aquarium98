@@ -49,16 +49,16 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends ffmpeg pngquant
-          # Convert MP3 → OGG at 64 kbps (halves audio size vs default quality)
+          # Convert MP3 → OGG at 96 kbps (good quality; 64k caused audible jitter)
           for f in assets/audio/*.mp3; do
             [ -f "$f" ] || continue
-            ffmpeg -i "$f" -b:a 64k "${f%.mp3}.ogg" -y -loglevel error
+            ffmpeg -i "$f" -b:a 96k "${f%.mp3}.ogg" -y -loglevel error
             rm "$f"
           done
-          # Convert WAV → OGG at 64 kbps (music tracks are large; 64k sounds fine)
+          # Convert WAV → OGG at 96 kbps (music tracks; 96k sounds clean in browser)
           for f in assets/audio/*.wav; do
             [ -f "$f" ] || continue
-            ffmpeg -i "$f" -b:a 64k "${f%.wav}.ogg" -y -loglevel error
+            ffmpeg -i "$f" -b:a 96k "${f%.wav}.ogg" -y -loglevel error
             rm "$f"
           done
           # Patch extension references in Python source to .ogg

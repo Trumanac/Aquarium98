@@ -152,6 +152,13 @@ async def main() -> int:
         while True:
             await asyncio.sleep(1)
 
+    # Hide loading overlay so it doesn't float over the game.
+    try:
+        import platform as _plt2
+        _plt2.window.infobox.style.display = "none"
+    except Exception:
+        pass
+
     _jsconsole("calling _game.main()")
     print("web: calling _game.main()")
     try:

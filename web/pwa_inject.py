@@ -149,6 +149,10 @@ self.addEventListener("fetch", event => {{
 _PWA_HEAD = """\
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#000080">
+  <style>
+    /* Black background so any letterbox/pillarbox gaps are invisible. */
+    html, body { background: #000 !important; margin: 0; padding: 0; }
+  </style>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
@@ -157,11 +161,12 @@ _PWA_HEAD = """\
           .catch(e => console.warn("[SW] registration failed:", e));
       });
     }
-    // Force pyconsole (Python terminal) visible so Python print() output
-    // is always readable — critical for diagnosing silent startup errors.
+    // Hide the xterm.js pyconsole so it does not push the game canvas off to
+    // the side. The terminal was force-shown during debugging; production build
+    // hides it so the game canvas fills the full browser viewport.
     window.addEventListener("load", () => {
       var pc = document.getElementById("pyconsole");
-      if (pc) { pc.hidden = false; pc.style.zIndex = "10"; }
+      if (pc) { pc.hidden = true; }
     });
   </script>"""
 
