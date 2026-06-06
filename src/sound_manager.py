@@ -81,6 +81,9 @@ class SoundManager:
         # pygame.display.init() was called — pygame.get_init() stays False).
         if not pygame.mixer.get_init():
             try:
+                # Fallback init (normally aquarium.py does this first).
+                # Keep settings identical to aquarium.py so there's no
+                # surprise if this path is hit in dev/test mode.
                 _mix_freq = 48000 if sys.platform == "emscripten" else 44100
                 _mix_buf  = 8192  if sys.platform == "emscripten" else 512
                 pygame.mixer.pre_init(_mix_freq, -16, 2, _mix_buf)

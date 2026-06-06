@@ -46,23 +46,15 @@ def init_window(cfg: dict) -> tuple[pygame.Surface, None, pygame.font.Font]:
     pygame.display.init()
     pygame.font.init()
 
-    # Default to configured size; then read the actual browser viewport.
-    # SDL2-WASM creates the canvas at the requested pixel size and CSS silently
-    # stretches it to fill the viewport — no WINDOWRESIZED event fires for that
-    # initial stretch, so the game would always render at 1280×720 regardless of
-    # the user's screen.  Reading platform.window.innerWidth here is safe because
-    # init_window() is called from inside the async game loop (not at module-load
-    # time), so the JS bridge is fully initialised.
-    w = max(MIN_W, min(MAX_W, int(cfg.get("window_w", 1280))))
-    h = max(MIN_H, min(MAX_H, int(cfg.get("window_h", 720))))
-    try:
-        import platform as _plt
-        vw = int(_plt.window.innerWidth)
-        vh = int(_plt.window.innerHeight)
-        if vw >= MIN_W and vh >= MIN_H:
-            w, h = vw, vh
-    except Exception:
-        pass
+    # Fixed at 1280×720 for web.  pygame.display.flip() in emscripten does a
+    # full pixel-buffer copy to the HTML canvas; at e.g. 1920×1080 that's 2×
+    # more data per frame, which makes frame times long and inconsistent and
+    # starves the audio buffer.  CSS already stretches the 1280×720 canvas to
+    # fill the browser viewport without any extra Python work.
+    # The game's WINDOWRESIZED handler will resize if the user clicks the
+    # fullscreen button (HTML5 Fullscreen API fires an OS resize event).
+    w = 1280
+    h = 720
 
     surface = pygame.display.set_mode((w, h))
     pygame.display.set_caption("Aquarium 98")

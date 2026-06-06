@@ -279,10 +279,11 @@ async def main() -> int:
             # CI encodes all OGG/WAV files at 48000 Hz (-ar 48000) so the mixer
             # never has to resample at runtime — resampling in the WASM audio
             # pipeline is what causes "digital grit" distortion on web.
-            # Buffer: WASM event-loop yields ~30×/sec; 4096 samples (~85 ms at
-            # 48000 Hz) gives ample headroom without noticeable latency.
+            # Buffer: WASM event-loop can hold Python execution for >85 ms (GC
+            # spikes, heavy frames).  8192 samples = 170 ms at 48000 Hz gives
+            # enough headroom to survive those spikes without audio dropouts.
             _mix_freq = 48000 if sys.platform == "emscripten" else 44100
-            _mix_buf  = 4096 if sys.platform == "emscripten" else 512
+            _mix_buf  = 8192  if sys.platform == "emscripten" else 512
             pygame.mixer.pre_init(_mix_freq, -16, 2, _mix_buf)
         except Exception:  # noqa: BLE001 — some WASM audio backends reject pre_init params
             pass
@@ -291,6 +292,16 @@ async def main() -> int:
             pygame.mixer.init()
         except Exception:  # noqa: BLE001 — audio unavailable; SoundManager degrades gracefully
             pass
+        if sys.platform == "emscripten":
+            try:
+                import platform as _plt_audio
+                _ai = pygame.mixer.get_init()
+                _plt_audio.window.console.log(
+                    f"[audio] mixer.get_init()={_ai}  "
+                    f"requested=({_mix_freq}Hz, -16, 2, buf={_mix_buf})"
+                )
+            except Exception:  # noqa: BLE001
+                pass
         pygame.font.init()
         show_splash()
         # Yield to the browser so the startup splash (if any) is visible while
