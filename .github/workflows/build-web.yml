@@ -71,6 +71,27 @@ jobs:
           find src -name "*.py" -exec sed -i 's/\.wav"/\.ogg"/g' {} +
           find . -maxdepth 1 -name "*.py" -exec sed -i 's/\.wav"/\.ogg"/g' {} +
 
+      - name: Convert BMP caustics to PNG (pygame-web WASM has no BMP decoder)
+        run: |
+          # pygame-web's emscripten SDL2_image build only supports PNG and JPEG.
+          # BMP files load fine on desktop but return None in _load_opaque() on
+          # WASM, leaving self.caustics / self.surface_ripples empty and silently
+          # skipping all caustic rendering.  Convert to PNG so they load in-browser.
+          python3 -c "
+          from PIL import Image
+          import glob, os
+          for f in (glob.glob('assets/sprites/caustics_floor/*.bmp') +
+                    glob.glob('assets/sprites/surface_ripples/*.bmp')):
+              Image.open(f).save(f[:-4] + '.png')
+              os.remove(f)
+              print('converted:', f)
+          "
+          # Patch renderer.py to load .png instead of .bmp for these sprite sets.
+          sed -i 's/\.bmp"/.png"/g' src/renderer.py
+          echo "Caustics PNG frames:"
+          ls assets/sprites/caustics_floor/*.png | wc -l
+          ls assets/sprites/surface_ripples/*.png | wc -l
+
       - name: Optimize PNG sprites for web (palette quantization, ~40-60% size reduction)
         run: |
           # pngquant reduces PNG size by 40-60% with minimal visual quality loss.
