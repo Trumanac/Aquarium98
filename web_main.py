@@ -97,37 +97,54 @@ _icon_gen_mod = types.ModuleType("src.icon_gen")
 _icon_gen_mod.ensure_icons = lambda: None
 sys.modules["src.icon_gen"] = _icon_gen_mod
 
-# ── import and run the game ───────────────────────────────────────────────────
-_jsconsole("importing aquarium...")
-try:
-    import aquarium as _game  # noqa: E402
-    _IMPORT_ERROR: Exception | None = None
-    _jsconsole("aquarium imported OK")
-except Exception as _exc:  # noqa: BLE001
-    import traceback as _tb
-    _IMPORT_ERROR = _exc
-    _jsconsole(f"FATAL import error: {type(_exc).__name__}: {_exc}")
-    print("FATAL: failed to import aquarium:", _exc)
-    print(_tb.format_exc())
-    _game = None  # type: ignore[assignment]
+# NOTE: aquarium is NOT imported here at module level.
+# In pygbag's WASM environment, `import pygame` at module load time returns a
+# minimal stub — the real pygame attributes (init, USEREVENT, display, etc.)
+# are only available after the event loop has ticked at least once via
+# requestAnimationFrame.  aquarium.py uses pygame.USEREVENT at module level,
+# so importing it here would fail.  We defer to inside main() after yielding.
+
+_jsconsole("stubs injected — waiting for event loop to tick before importing game")
 
 
 # pygbag requires a callable named `main` in the entry file.
 async def main() -> int:
     import traceback as _tb
     _jsconsole("main() coroutine started")
-    # Draw a "Starting..." splash immediately so the canvas is not grey.
-    print("web: starting — drawing startup splash")
-    _render_status("Starting Aquarium 98...")
-    await asyncio.sleep(0)   # yield so the canvas updates before heavy init
 
-    if _game is None:
-        msg = type(_IMPORT_ERROR).__name__ + ": " + str(_IMPORT_ERROR)
-        _jsconsole(f"game import failed: {msg}")
-        print("web: import failed:", msg)
+    # Update the HTML infobox — works before pygame is ready.
+    try:
+        import platform as _plt
+        _plt.window.infobox.style.display = "block"
+        _plt.window.infobox.innerText = "Starting Aquarium 98..."
+    except Exception:
+        pass
+
+    # Yield to the event loop several times so pygbag's WASM runtime can
+    # populate the pygame module (attributes like init, USEREVENT, display etc.
+    # are only added after requestAnimationFrame fires at least once).
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    _jsconsole("event loop ticked — drawing startup splash")
+    _render_status("Starting Aquarium 98...")
+    await asyncio.sleep(0)
+
+    # Now import the game (pygame is fully populated by this point).
+    _jsconsole("importing aquarium...")
+    try:
+        import aquarium as _game
+        _jsconsole("aquarium imported OK")
+    except Exception as _exc:
+        msg = type(_exc).__name__ + ": " + str(_exc)
+        _jsconsole(f"FATAL import error: {msg}")
+        print("FATAL: failed to import aquarium:", _exc)
+        print(_tb.format_exc())
         _render_fatal(msg)
         while True:
             await asyncio.sleep(1)
+        return 1  # unreachable
 
     _jsconsole("calling _game.main()")
     print("web: calling _game.main()")
@@ -145,11 +162,8 @@ async def main() -> int:
         return 1  # unreachable
 
     # If we reach here the game exited cleanly (return 0/1).
-    # Keep showing the canvas so the user sees the last frame; if the screen
-    # is grey that means a silent early-exit occurred.
     print(f"web: game exited with code {result}")
     # Clean exit (code 0): the user chose Restart — reload the page.
-    # Non-zero exit: something went wrong; show the error screen.
     if result == 0:
         try:
             import platform as _plt
